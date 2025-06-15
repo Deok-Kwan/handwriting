@@ -1,0 +1,65 @@
+{
+  "timestamp": "2025-03-31T00:03:14.054441",
+  "generation_method": "create_multi_doc_with_mask",
+  "parameters": {
+    "doc_width": 1200,
+    "line_spacing": 30,
+    "background_id": 0
+  },
+  "source_lines_used": [
+    "/home/dk926/workspace/MIL/line_segments/w0020_pWOZ_line_0.png",
+    "/home/dk926/workspace/MIL/line_segments/w0004_pWOZ_line_0.png"
+  ],
+  "bag_labels": {
+    "authors_present_str": [
+      "w0004",
+      "w0020"
+    ],
+    "is_multi_author": true,
+    "num_authors": 2
+  },
+  "instance_labels": [
+    {
+      "instance_doc_id": 0,
+      "author_id_str": "w0020",
+      "author_id_int": 1,
+      "source_file": "/home/dk926/workspace/MIL/line_segments/w0020_pWOZ_line_0.png",
+      "bbox": [
+        0,
+        0,
+        1200,
+        449
+      ],
+      "original_height": 945,
+      "original_width": 2521,
+      "resized_height": 449,
+      "resized_width": 1200,
+      "scaling_factor": 0.4760015866719556
+    },
+    {
+      "instance_doc_id": 1,
+      "author_id_str": "w0004",
+      "author_id_int": 2,
+      "source_file": "/home/dk926/workspace/MIL/line_segments/w0004_pWOZ_line_0.png",
+      "bbox": [
+        0,
+        479,
+        1200,
+        75
+      ],
+      "original_height": 158,
+      "original_width": 2521,
+      "resized_height": 75,
+      "resized_width": 1200,
+      "scaling_factor": 0.4760015866719556
+    }
+  ],
+  "writer_id_map": {
+    "w0020": 1,
+    "w0004": 2
+  },
+  "output_image_file": "./synth_output_mil_test/synth_w0004_w0020_pair_0_20250331000314054472_img.png",
+  "output_mask_file": "./synth_output_mil_test/synth_w0004_w0020_pair_0_20250331000314054472_mask.png",
+  "output_log_file": "./synth_output_mil_test/logs/synth_w0004_w0020_pair_0_20250331000314054472_log.json",
+  "author_metadata": null
+}
