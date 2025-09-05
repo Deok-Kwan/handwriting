@@ -58,14 +58,13 @@ Thumbs.db
 ehthumbs.db
 Desktop.ini
 
-# 데이터 파일들 (특정 파일만 제외)
+# 데이터 파일들 (아카이브/모델/피클 등)
 *.tar.gz
 *.zip
 *.rar
 *.7z
 *.h5
 *.pkl
-*.csv
 
 # 이미지 파일 (실험 결과 이미지)
 *.png
@@ -88,12 +87,20 @@ output/processed/
 output/results/
 output/*/
 
+# 대규모 데이터셋(로컬 산출/캐시)
+mil_dataset/
+old/craft_output/
+
 # Core dump 파일
 core.*
 
 # 실험 결과 폴더 전체
-experiments/*/agent/
 experiments/*/output/
+
+# 실험/학습 로그 폴더
+runs/
+wandb/
+lightning_logs/
 
 # 로그 파일
 *.log
@@ -103,6 +110,8 @@ logs/
 *.tmp
 *.temp
 
+# 노트북 체크포인트 파일명 패턴
+*-checkpoint.ipynb
+
 # ClaudPoint checkpoint system
 .checkpoints/
-.venv/
