@@ -65,12 +65,35 @@ Desktop.ini
 *.7z
 *.h5
 *.pkl
+*.csv
 
-# 대용량 데이터 폴더 (하지만 구조는 포함)
+# 이미지 파일 (실험 결과 이미지)
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.bmp
+*.tiff
+
+# PDF 파일
+*.pdf
+
+# 대용량 데이터 폴더
 data/raw/csafe_version5_xai_train/
 data/processed/embeddings/
 data/processed/bags/
 output/models/
+output/figures/
+output/processed/
+output/results/
+output/*/
+
+# Core dump 파일
+core.*
+
+# 실험 결과 폴더 전체
+experiments/*/agent/
+experiments/*/output/
 
 # 로그 파일
 *.log
@@ -82,3 +105,4 @@ logs/
 
 # ClaudPoint checkpoint system
 .checkpoints/
+.venv/

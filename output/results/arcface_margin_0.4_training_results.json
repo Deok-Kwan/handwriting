@@ -1,0 +1,118 @@
+{
+    "best_val_auc": 0.9150283628220315,
+    "final_train_acc": 0.23263141715339686,
+    "final_val_auc": 0.8997388121853717,
+    "final_val_eer": 0.16951066034942253,
+    "final_train_loss": 6.402433513752174,
+    "final_val_loss": 0.0,
+    "final_val_l2_norm_mean": 1.0,
+    "final_val_l2_norm_std": 3.982379581657369e-08,
+    "total_epochs": 5,
+    "total_training_time": 4108.488358259201,
+    "average_epoch_time": 821.6976716518402,
+    "history": {
+        "train_loss": [
+            17.41359415502868,
+            14.531710907308424,
+            10.99166091112148,
+            8.34136849464067,
+            6.402433513752174
+        ],
+        "train_acc": [
+            0.0,
+            0.0003554411312634491,
+            0.023617622194897017,
+            0.11589782508453735,
+            0.23263141715339686
+        ],
+        "val_loss": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+        ],
+        "val_auc": [
+            0.7979669455137696,
+            0.9150283628220315,
+            0.9113164421083803,
+            0.9036045769173824,
+            0.8997388121853717
+        ],
+        "val_eer": [
+            0.28368836985490076,
+            0.1647357121705656,
+            0.1630561519099793,
+            0.1701214095350903,
+            0.16951066034942253
+        ],
+        "val_l2_norm_mean": [
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0
+        ],
+        "val_l2_norm_std": [
+            4.5764782186097364e-08,
+            3.671428672191723e-08,
+            3.9837708243339875e-08,
+            4.020082400302272e-08,
+            3.982379581657369e-08
+        ],
+        "learning_rates": [
+            7.551821567112048e-07,
+            9.992399766118075e-07,
+            9.93179227115402e-07,
+            9.811331637446376e-07,
+            9.632480093908055e-07
+        ],
+        "arcface_margin": 0.4,
+        "arcface_scale": 30.0,
+        "embedding_dim": 256,
+        "use_layer_norm": true,
+        "train_num_classes": 180
+    },
+    "training_config": {
+        "num_epochs": 30,
+        "batch_size": 64,
+        "effective_batch_size": 64,
+        "num_gpus": 1,
+        "num_workers": 8,
+        "base_learning_rate": 1e-05,
+        "adjusted_learning_rate": 1e-05,
+        "max_learning_rate": 1e-05,
+        "embedding_dim": 256,
+        "num_classes": 300,
+        "arcface_margin": 0.4,
+        "arcface_scale": 30.0,
+        "normalization": "LayerNorm",
+        "gradient_clipping": 5.0,
+        "mixed_precision_init_scale": 512,
+        "early_stopping_patience": 3,
+        "mixed_precision": true,
+        "data_parallel": false,
+        "evaluation_metric": "AUC/EER",
+        "augmentation_settings": {
+            "horizontal_flip": false,
+            "rotation_degrees": 7,
+            "translate": [
+                0.05,
+                0.05
+            ],
+            "scale": [
+                0.95,
+                1.05
+            ],
+            "shear": 3,
+            "perspective": 0.15
+        }
+    },
+    "system_info": {
+        "cpu_count": 64,
+        "gpu_count": 1,
+        "gpu_names": [
+            "NVIDIA GeForce RTX 3090"
+        ]
+    }
+}
