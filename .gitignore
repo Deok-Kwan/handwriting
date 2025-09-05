@@ -90,6 +90,8 @@ output/*/
 # 대규모 데이터셋(로컬 산출/캐시)
 mil_dataset/
 old/craft_output/
+old/
+Juheon/
 
 # Core dump 파일
 core.*
