@@ -227,7 +227,20 @@ jupyter notebook MIL/experiments/autoencoder/mil_data_generator2.ipynb
 jupyter notebook MIL/experiments/autoencoder/AB_MIL_autoencoder_128d.ipynb
 ```
 
+#### 2. Siamese Network 기반 실험 (개선된 방법)
+```bash
+# Step 1: Siamese 네트워크 학습 (작성자별 특징 학습)
+jupyter notebook MIL/experiments/siamese/train_siamese.ipynb
 
+# Step 2: Siamese 임베딩 추출
+jupyter notebook MIL/experiments/siamese/mil_data_generator_siamese.ipynb
+
+# Step 3: MIL Bag 데이터 생성
+jupyter notebook MIL/experiments/siamese/mil_data_generator2_siamese.ipynb
+
+# Step 4: Attention-Based MIL 학습
+jupyter notebook MIL/experiments/siamese/AB_MIL_siamese_128d.ipynb
+```
 
 ### MCP 도구
 ```bash
@@ -276,7 +289,25 @@ claudepoint restore <체크포인트-이름>
 
 ### MIL 모델 아키텍처
 
-
+#### 1. Siamese Network (작성자 특징 학습)
+```python
+class SiameseNetwork(nn.Module):
+    def __init__(self, base_model, embedding_dim=128):
+        super(SiameseNetwork, self).__init__()
+        self.base_model = base_model  # 사전학습된 ViT
+        self.embedding_layer = nn.Sequential(
+            nn.Linear(300, 256),
+            nn.ReLU(),
+            nn.Dropout(0.2),
+            nn.Linear(256, embedding_dim),
+            nn.BatchNorm1d(embedding_dim)
+        )
+    
+    def forward_one(self, x):
+        x = self.base_model(x)
+        x = self.embedding_layer(x)
+        return F.normalize(x, p=2, dim=1)  # L2 정규화
+```
 
 #### 2. Attention-Based MIL
 ```python
@@ -315,26 +346,16 @@ combined_dataset = ConcatDataset([dataset1, dataset2, dataset3])
 
 ### MIL 평가 지표
 
-
+#### Siamese Network 평가
+- **거리 기반**: 같은/다른 작성자 간 L2 거리 분포
+- **정확도**: 임계값 기반 이진 분류 정확도
+- **t-SNE 시각화**: 작성자별 클러스터링 품질
 
 #### MIL 모델 평가
 - **Bag 수준 정확도**: 단일/복수 작성자 분류 정확도
 - **ROC-AUC**: 분류 성능의 종합적 평가
 - **Attention 가중치**: 어떤 패치가 중요한지 시각화
 - **F1 Score**: 정밀도와 재현율의 조화 평균
-
-### 검증 및 테스트 방식
-
-#### 검증 과정 (학습 중)
-- **샘플링 방식**: `max_pairs=10000`으로 제한하여 빠른 검증
-- **목적**: 학습 진행 상황 모니터링 및 조기 종료
-- **속도 우선**: 전체 학습 시간 단축을 위한 근사치 사용
-
-#### 최종 테스트 (학습 완료 후)
-- **전체 쌍 비교**: 모든 가능한 작성자 쌍을 비교하여 정확한 성능 측정
-- **목적**: 정확한 모델 성능 보고 및 논문 작성용 결과
-- **정확도 우선**: 시간이 걸리더라도 정밀한 평가 수행
-- **일반화 성능**: 검증-테스트 성능 차이로 오버피팅 여부 확인
 
 ## GPU 메모리 관리
 
@@ -389,14 +410,10 @@ torch.backends.cudnn.benchmark = False
 ## 중요한 설정 및 제약사항
 
 ### 데이터 범위 및 경로 설정
-- **데이터 범위**: 실제 존재하는 이미지는 0~299 라벨 (300명 작성자) 전체 사용 가능
+- **데이터 범위**: 실제 존재하는 이미지는 0~299 라벨 (300명 작성자)만 존재
 - **CSV 메타데이터**: 0~474 라벨까지 있지만, 300~474는 실제 이미지 파일 없음
-- **기본 데이터 분할** (전체 300명 사용):
-  - 훈련: 0~179 (180명)
-  - 검증: 180~239 (60명)
-  - 테스트: 240~299 (60명)
-- **선택적 부분 데이터 분할** (필요시 100명만 사용):
-  - 필터링 조건: `data['label'] >= 200` 사용 (200~299 범위, 100명 작성자)
+- **필터링 조건**: `data['label'] >= 200` 사용 (200~299 범위, 100명 작성자)
+- **데이터 분할**:
   - 훈련: 200~259 (60명)
   - 검증: 260~279 (20명)
   - 테스트: 280~299 (20명)
@@ -431,12 +448,6 @@ torch.backends.cudnn.benchmark = False
   - `NotebookEdit`: 노트북 셀 편집/삽입/삭제
   - `mcp__ide__executeCode`: Jupyter 커널에서 코드 실행
 
-### 멀티 GPU 학습 환경
-- **DataParallel(DP) 사용**: Jupyter Notebook 환경에서는 `nn.DataParallel`만 사용
-- **DistributedDataParallel(DDP) 제외**: `mp.spawn`을 사용하는 DDP는 Jupyter와 호환되지 않아 사용하지 않음
-- **GPU 설정**: `CUDA_VISIBLE_DEVICES`로 특정 GPU만 선택하여 사용 (예: GPU 2,3,4)
-- **배치 크기**: DataParallel이 자동으로 배치를 GPU 수만큼 분할하므로 전체 배치 크기 설정
-
 ## 서버 스펙 정보 (10GPU 서버)
 
 ### 하드웨어 사양
@@ -445,9 +456,9 @@ torch.backends.cudnn.benchmark = False
 - **GPU**: NVIDIA GeForce RTX 3090 × 5대 (각 24GB, 총 120GB)
 - **CUDA**: 12.0 (드라이버), 11.8 (컴파일러)
 - **스토리지**:
-  - 시스템: 200GB 
-  - /home: 3.3TB 
-  - /data: 11TB 
+  - 시스템: 200GB (79% 사용)
+  - /home: 3.3TB (95% 사용 ⚠️)
+  - /data: 11TB (17% 사용)
 
 ### 딥러닝 최적화 가이드
 - **배치 크기 권장** (RTX 3090 24GB 기준):
@@ -457,101 +468,3 @@ torch.backends.cudnn.benchmark = False
 - **멀티 GPU 활용**: DataParallel 또는 DistributedDataParallel 사용
 - **공유 서버 가이드**: 4명 공유, 1인당 1-2 GPU 권장
 - **스토리지 관리**: 대용량 데이터는 /data 디렉토리 활용
-
-## Gemini CLI 사용법 - 대용량 코드베이스 분석
-
-Claude의 컨텍스트 한계를 초과하는 대용량 파일이나 코드베이스 분석 시, Gemini CLI의 대용량 컨텍스트 윈도우를 활용합니다.
-
-### 파일 및 디렉토리 포함 문법
-
-`@` 문법을 사용하여 Gemini 프롬프트에 파일과 디렉토리를 포함시킵니다. 경로는 gemini 명령을 실행하는 위치에서의 상대 경로입니다:
-
-#### 예시:
-
-**단일 파일 분석:**
-```bash
-gemini -p "@src/main.py 이 파일의 목적과 구조를 설명하세요"
-```
-
-**여러 파일:**
-```bash
-gemini -p "@package.json @src/index.js 코드에서 사용된 의존성을 분석하세요"
-```
-
-**전체 디렉토리:**
-```bash
-gemini -p "@src/ 이 코드베이스의 아키텍처를 요약하세요"
-```
-
-**여러 디렉토리:**
-```bash
-gemini -p "@src/ @tests/ 소스 코드에 대한 테스트 커버리지를 분석하세요"
-```
-
-**현재 디렉토리와 하위 디렉토리:**
-```bash
-gemini -p "@./ 이 전체 프로젝트의 개요를 제공하세요"
-# 또는 --all_files 플래그 사용:
-gemini --all_files -p "프로젝트 구조와 의존성을 분석하세요"
-```
-
-### 구현 검증 예시
-
-**기능 구현 확인:**
-```bash
-gemini -p "@src/ @lib/ 이 코드베이스에 다크 모드가 구현되어 있나요? 관련 파일과 함수를 보여주세요"
-```
-
-**인증 구현 검증:**
-```bash
-gemini -p "@src/ @middleware/ JWT 인증이 구현되어 있나요? 모든 인증 관련 엔드포인트와 미들웨어를 나열하세요"
-```
-
-**특정 패턴 검색:**
-```bash
-gemini -p "@src/ WebSocket 연결을 처리하는 React 훅이 있나요? 파일 경로와 함께 나열하세요"
-```
-
-**에러 처리 확인:**
-```bash
-gemini -p "@src/ @api/ 모든 API 엔드포인트에 적절한 에러 처리가 구현되어 있나요? try-catch 블록의 예시를 보여주세요"
-```
-
-**rate limiting 확인:**
-```bash
-gemini -p "@backend/ @middleware/ API에 rate limiting이 구현되어 있나요? 구현 세부사항을 보여주세요"
-```
-
-**캐싱 전략 검증:**
-```bash
-gemini -p "@src/ @lib/ @services/ Redis 캐싱이 구현되어 있나요? 모든 캐시 관련 함수와 사용법을 나열하세요"
-```
-
-**보안 조치 확인:**
-```bash
-gemini -p "@src/ @api/ SQL 인젝션 방어가 구현되어 있나요? 사용자 입력이 어떻게 sanitize되는지 보여주세요"
-```
-
-**기능별 테스트 커버리지 검증:**
-```bash
-gemini -p "@src/payment/ @tests/ 결제 처리 모듈이 완전히 테스트되어 있나요? 모든 테스트 케이스를 나열하세요"
-```
-
-### Gemini CLI 사용 시점
-
-다음과 같은 경우 `gemini -p`를 사용하세요:
-- 전체 코드베이스나 대규모 디렉토리 분석
-- 여러 대용량 파일 비교
-- 프로젝트 전체의 패턴이나 아키텍처 이해 필요
-- 현재 컨텍스트 윈도우가 작업에 불충분한 경우
-- 100KB 이상의 파일들을 다룰 때
-- 특정 기능, 패턴, 또는 보안 조치의 구현 여부 확인
-- 전체 코드베이스에서 특정 코딩 패턴의 존재 확인
-
-### 중요 참고사항
-
-- @ 문법의 경로는 gemini 명령을 실행하는 현재 작업 디렉토리 기준 상대 경로
-- CLI가 파일 내용을 컨텍스트에 직접 포함
-- 읽기 전용 분석에는 --yolo 플래그 불필요
-- Gemini의 컨텍스트 윈도우는 Claude의 컨텍스트가 오버플로우될 전체 코드베이스를 처리 가능
-- 구현 확인 시 찾고자 하는 내용을 구체적으로 명시하여 정확한 결과 획득
