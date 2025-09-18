@@ -1,0 +1,47 @@
+{
+  "timestamp": "2025-09-05 03:30:54",
+  "n_models": 8,
+  "best_model": {
+    "name": "DSMIL",
+    "auc": 0.871,
+    "f1": 0.792
+  },
+  "model_rankings": [
+    [
+      "DSMIL",
+      0.871
+    ],
+    [
+      "CLAM",
+      0.85
+    ],
+    [
+      "Gated Attention",
+      0.842
+    ],
+    [
+      "CAMIL",
+      0.842
+    ],
+    [
+      "Basic Attention",
+      0.838
+    ],
+    [
+      "Transformer MIL",
+      0.831
+    ],
+    [
+      "AttriMIL",
+      0.828
+    ],
+    [
+      "Mean Pooling",
+      0.514
+    ]
+  ],
+  "baseline_improvement": {
+    "max_auc_improvement": "69.5%",
+    "max_f1_improvement": "17.2%"
+  }
+}

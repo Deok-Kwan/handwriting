@@ -1,0 +1,1607 @@
+Received: 22 December 2023
+
+Revised: 28 December 2023
+
+Accepted: 6 January 2024
+
+DOI: 10.1002/sam.11660
+
+RESEARCH ARTICLE
+
+A deep learning approach for the comparison of
+handwritten documents using latent feature vectors
+Juhyeon Kim1
+
+Soyoung Park1
+
+Alicia Carriquiry2
+
+1
+
+Department of Statistics, Pusan National
+University, Busan, South Korea
+2
+
+Department of Statistics, Iowa State
+University, Ames, Iowa, USA
+Correspondence
+Soyoung Park, Department of Statistics,
+Pusan National University, Busan,
+South Korea.
+Email: soyoung@pusan.ac.kr
+Funding information
+National Research Foundation of Korea,
+Grant/Award Number:
+2021R1C1C100711111; Center for
+Statistics and Applications in Forensic
+Evidence, Grant/Award Numbers:
+70NANB20H019, 70NANB15H176; Texas
+A&M University: The Hagler Institute for
+Advanced Studies
+
+Abstract
+Forensic questioned document examiners still largely rely on visual assessments
+and expert judgment to determine the provenance of a handwritten document.
+Here, we propose a novel approach to objectively compare two handwritten documents using a deep learning algorithm. First, we implement a bootstrapping
+technique to segment document data into smaller units, as a means to enhance
+the efficiency of the deep learning process. Next, we use a transfer learning
+algorithm to systematically extract document features. The unique characteristics of the document data are then represented as latent vectors. Finally, the
+similarity between two handwritten documents is quantified via the cosine similarity between the two latent vectors. We illustrate the use of the proposed
+method by implementing it on a variety of collections of handwritten documents
+with different attributes, and show that in most cases, we can accurately classify
+pairs of documents into same or different author categories.
+KEYWORDS
+autoencoder, bootstrapping, forensic science, handwriting verification, siamese network,
+Vision Transformer
+
+1
+
+I N T RO DU CT ION
+
+Forensic handwriting examination is used to identify the
+author of a handwritten document that may be part of the
+evidence found at a crime scene. DNA or fingerprint analysis relies on the uniqueness of the genome or the patterns
+of dermal ridges for identification; similarly, handwriting analysis makes use of traces left by an individual’s
+neuromuscular movements [13]. It is predicated on the
+assumption that each person develops a unique style of
+handwriting over the years, influenced by cultural, demographic, and physiological factors [19]. These assumptions
+
+suggest that handwriting contains unique features that can
+identify individuals. In other words, handwriting verification is the process of extracting features from handwritten
+documents that can identify a person. However, this is
+easier said than done; features can be complex and subtle, making objective and quantitative comparative analysis challenging. As a result, at present, the process of
+handwriting verification relies on the subjective work and
+experience of investigators. The 2009 National Research
+Council’s [25] report “Strengthening Forensic Science in
+the United States” points out the limitations in consistency
+and objectivity of handwriting verification outcomes.
+
+This is an open access article under the terms of the Creative Commons Attribution-NonCommercial License, which permits use, distribution and reproduction in any
+medium, provided the original work is properly cited and is not used for commercial purposes.
+© 2024 The Authors. Statistical Analysis and Data Mining: The ASA Data Science Journal published by Wiley Periodicals LLC.
+Stat Anal Data Min: The ASA Data Sci Journal. 2024;17:e11660.
+https://doi.org/10.1002/sam.11660
+
+wileyonlinelibrary.com/sam
+
+1 of 19
+
+KIM et al.
+
+F I G U R E 1 Examples of
+handwritten datasets separated by
+signature and document; (A) AND
+dataset [6], (B) Center for Statistics and
+Applications in Forensic Evidence
+handwritten dataset [8], (C) Center of
+Excellence for Document Analysis and
+Recognition signature dataset [30], (D)
+Computer Vision Lab dataset [21]; (A,
+C) is signature and (B, D) is document.
+
+According to the European Network of Forensic Science Institutes (ENFSI [13]), handwritten data can be
+broadly categorized into two types. The first type is documents, which include letters, notes, and other standard written texts. Documents contain features that can
+help identify authors, including handwriting habits, letter
+shapes, connection patterns, and handwriting consistency.
+These features can be divided into character-, word-, or
+sentence-level features. Character-level features include
+slant, height, roundness, and others. Word-level features
+focus on the individual characteristics within words, such
+as letter shapes, the spacing between letters, and the formation of each letter in various positions within a word.
+Sentence-level features, on the other hand, examine the
+overall structure and layout of the text, including the spacing between words, the alignment of text on the line, and
+the overall organization of the writing on the page.
+The second type of document consists mostly of signatures, which are unique marks left by individuals on
+legal documents, bank transactions, or other important
+papers. Also known as autographs, these are a set of
+an individual’s handwriting that signify recognition and
+responsibility for documents with legal effect. Examples
+of signature and document data can be found in Figure 1.
+Figure 1A shows an example from the AND dataset [6],
+and Figure 1C shows an example from the Center of Excellence for Document Analysis and Recognition (CEDAR)
+signature dataset [30]. Both of these datasets include signatures. Figure 1B is an example from the Center for Statistics
+and Applications in Forensic Evidence (CSAFE) handwriting database [8], and Figure 1D is an example from the
+Computer Vision Lab (CVL) database [21]. These last two
+datasets include longer handwritten documents.
+Here, we evaluate handwriting evidence in the form
+of documents using deep learning algorithms. Deep learning algorithms are well suited for analyzing images, and
+
+automatically extract features that enable classification of
+images into predefined classes, or quantification of the
+similarity between two images. While it is possible to
+define features that characterize handwriting by many
+other means, deep learning models tend to extract features in an objective and efficient manner. Models that
+have been pretrained on hundreds of thousands, or even
+millions of images which include the Residual Network
+(ResNet) model [17], the Efficient Network (EFF) model
+[32], and the Vision Transformer (VIT) model [11] enable
+approaches such as transfer learning, which can be useful in problems such as ours. Our research leverages the
+advantages of deep learning to extract complex latent features of handwriting to quantify similarity of two or more
+documents.
+
+2
+2.1
+
+PREVIOUS WO RK
+Guidelines
+
+ENFSI [26] is an organization established to foster collaboration among national forensic institutes, and to share
+expertise and best practices. ENFSI provides international
+standards for forensic science, enabling forensic laboratories to compare standard methods with newly proposed
+approaches.
+ENFSI [26] provides international guidelines for handwriting verification. As per ENFSI [13], the process of
+handwriting verification can be broadly divided into two
+steps: feature analysis and results derivation. The feature
+analysis step is conducted by trained investigators and can
+be further divided into the description of general features
+and detailed features. According to Appendix 4 of ENFSI
+[13], general features include style and legibility, general
+layout, detailed layout features, detailed baseline, relative
+
+19321872, 2024, 1, Downloaded from https://onlinelibrary.wiley.com/doi/10.1002/sam.11660 by South Korea National Provision, Wiley Online Library on [19/02/2024]. See the Terms and Conditions (https://onlinelibrary.wiley.com/terms-and-conditions) on Wiley Online Library for rules of use; OA articles are governed by the applicable Creative Commons License
+
+2 of 19
+
+3 of 19
+
+size and proportions, relative spacing, and slope. Detailed
+features are defined as pen path and character construction, fluency, pressure, tapering features, variation in pressure and connectivity, overall assessment of fluency, range
+of variation, and superimposition. All these characteristics
+fall under visual traits and are subjectively evaluated on
+a 7-point scale, including “missing feature/not comparable.” The results derivation step is referenced in Appendix
+5 of ENFSI [13], and is formalized as a test of hypothesis.
+Using the case where the questioned document is a signature as an example, the two competing hypotheses H1 and
+H2 are stated as follows:
+H1. The questioned signature is genuine, that
+is, it was written by person A.
+H2. The questioned signature is simulated,
+that is, it was written by a person other than A.
+Features extracted from the signature, and from other
+signatures from a relevant sample, will tend to support
+either H1 or H2. The strength of the evidence in favor of
+one or the other hypothesis is typically quantified in the
+form of a likelihood ratio (LR). In general, the likelihood
+ratio is calculated as the ratio of the chances of observing the evidence (E) when H1 is true and the chances of
+observing the evidence when H2 is true. What is of interest to jurors is the posterior probabilities of H1 and H2,
+which can be calculated as shown in Equation (1), where
+I denotes the contribution of other evidence independent
+of the handwriting evidence. In Equation (1), the left-most
+term is the LR, the term in the middle is the prior odds in
+favor of H1, and the resulting quantity on the right is the
+posterior odds in favor of H1. This equation is known as the
+odds-form of Bayes’ Rule and is written as in Equation (1):
+Pr(E|H1 , I) Pr(H1 |I) Pr(H1 |E, I)
+×
+=
+Pr(E|H2 , I) Pr(H2 |I) Pr(H2 |E, I)
+
+(1)
+
+Likelihood ratio Prior odds = Posterior odds.
+The role of examiners is limited to calculating the LR
+based on the handwriting evidence (E), while the calculation of the posterior odds is the responsibility of the court.
+In the United States, questioned document examination continues to rely on visual inspection and the knowledge and expertise of the examiner. Examiners report the
+results of their evaluation in the form of a categorical conclusion using a multi-category scale similar to the one
+used by European examiners. Sita et al [29]. conducted an
+experiment to assess the difference in handwriting analysis skills between laypeople and trained investigators. They
+found that laypeople made errors in 19.3% of cases, while
+investigators erred in approximately 3.4% of cases, which
+suggested that questioned document examiners tend to
+have low error rates. A recent black-box study [18] largely
+
+confirmed these findings. Despite these apparently low
+error rates, Hicklin et al. [18] also reported modest reproducibility of categorical conclusions across examiners,
+which can be explained by the fact that the process of evaluating handwriting evidence is subjective. This can lead to
+different conclusions depending on the investigator.
+
+2.2
+Recent advances in the forensic
+analysis of handwritten evidence
+In recent years, several authors have proposed the use of
+statistical and algorithmic approaches to evaluate handwritten documents. These include Crawford et al. [9],
+Johnson and Ommen [20], and Crawford et al. [10]. These
+three studies utilized the CSAFE handwriting dataset [8]
+or the CVL dataset [21]. The authors used the R package “handwriter” [3] for feature extraction, which begins
+by representing handwriting as a collection of graphs.
+Decomposing handwriting samples into graphical structures is not a new idea (see Bulaku and Shomaker [5]), but
+the subsequent statistical analysis of the graphs is a new
+idea.
+Crawford et al. [9] and Crawford et al. [10] address the
+classification problem in a closed-set environment, which
+assumes that the author of the questioned document is
+included in a finite group of potential writers. The authors
+propose a dynamic clustering approach based on k-means
+to group graphs in a document into a fixed number K of
+clusters, and use the frequency of graphs assigned to each
+cluster as a document-level feature. This feature becomes
+the multinomial K–dimensional response variable in a
+Bayesian hierarchical model to estimate posterior probabilities of writership of the questioned document for each
+writer in the closed set. The performance of the method
+was tested by using different subsets of the CSAFE and the
+CVL databases, and found that as long as the questioned
+document had about 20 or 25 words, accuracy was high,
+over 95% or 96% in most cases.
+Johnson and Ommen [20] propose a writer-matching
+solution in an open-set environment, where the writer
+of the questioned document can be anyone in a relevant population. Johnson and Ommen [20] use the same
+K–dimensional vector of cluster frequencies in a document, but now they calculate the differences in the frequencies observed in the questioned document and in a
+sample of writing obtained from the defendant. The K differences are combined into a single similarity score using
+a random forest [4]. Given reference distributions of the
+value of the similarity score that are computed from pairs
+of documents known to have been written by the same person or by different individuals, Johnson and Ommen [20]
+propose calculating a score-based likelihood ratio (SLR)
+
+19321872, 2024, 1, Downloaded from https://onlinelibrary.wiley.com/doi/10.1002/sam.11660 by South Korea National Provision, Wiley Online Library on [19/02/2024]. See the Terms and Conditions (https://onlinelibrary.wiley.com/terms-and-conditions) on Wiley Online Library for rules of use; OA articles are governed by the applicable Creative Commons License
+
+KIM et al.
+
+KIM et al.
+
+F I G U R E 2 Overview of the model proposed to determine whether two documents were written by the same person by sequentially
+undergoing stages of preprocessing, feature extraction, latent vector generation, and similarity calculation.
+
+to determine whether the evidence supports the same or
+different writer hypothesis.
+An attractive feature of the methods we described
+above is their interpretability. Crawford et al. [9] and Crawford et al. [10] fit a statistical model to semantically sensible features. Johnson and Ommen [20] combine features
+using a random forest and therefore sacrifice some interpretability, but still retain the ability to determine which
+features are most discriminating. While these approaches
+can in addition be quite accurate, their limitation is that
+they fail when the questioned document is short (e.g., a
+few words as in a threatening note, or a signature). Crawford et al. [10] showed that accuracy plummets from a high
+of about 97% to a low of about 75% when the questioned
+document goes from four to one sentence in length.
+At least two authors have proposed using neural nets
+for the forensic evaluation of handwritten documents. Fiel
+and Sablatnic [14] used a convolutional neural net to
+extract features from handwriting and then use those features to compare documents. More recently, Marcinowski
+[23] proposed constructing a top-interpretable neural net
+which he tested on a small dataset with promising results.
+None of the two sets of authors progressed beyond showing
+that deep learning methods have great potential and can
+help overcome some of the limitations of the purely statistical approaches, albeit at the expense of interpretability
+and transparency.
+
+architecture of the model we propose is shown in Figure 2,
+to perform handwriting verification using deep learning.
+In the first step, the two handwritten documents to be
+compared undergo a preprocessing stage, which involves
+splitting both documents into smaller pieces. Next, we use
+pretrained deep learning models to extract features from
+these smaller-sized images. These features are then compressed into latent vectors using either an autoencoder or
+a siamese network structure. Finally, we calculate a similarity score for the latent vectors extracted from the two
+documents. This similarity score can then be used by the
+examiner to reach a decision regarding writership of the
+documents. In the next few sections, we describe each of
+the steps in the model in more detail.
+
+3.1
+
+In our work, we used scanned images of handwritten documents from two databases: the CSAFE database, where
+the average size of an image was 2500 × 2800, and the CVL
+database, where the average image size was 2500 × 1400.
+To prepare these images for input into the deep learning
+feature extractor, we considered three different methods to
+split images into smaller analytical units.
+
+3.1.1
+3
+A TRANSFER LEARNING
+METHOD TO CO MPARE
+HANDWRITTEN DOCUMENTS
+We propose a deep learning approach to quantify the
+similarity between two handwritten documents. The
+
+Preprocessing step
+
+Simple split
+
+The first method, denoted “simple split,” consists in overlaying a grid on the image such that the pieces do not overlap. The resulting sub-images contain incomplete alphabets. This method is illustrated in Figure 3, and the specific
+approach is as follows:
+
+19321872, 2024, 1, Downloaded from https://onlinelibrary.wiley.com/doi/10.1002/sam.11660 by South Korea National Provision, Wiley Online Library on [19/02/2024]. See the Terms and Conditions (https://onlinelibrary.wiley.com/terms-and-conditions) on Wiley Online Library for rules of use; OA articles are governed by the applicable Creative Commons License
+
+4 of 19
+
+5 of 19
+
+F I G U R E 3 Schematic diagram of simple split process: (1) Padding the document to make it a multiple of the desired split size, (2)
+Creating boundary lines in a grid pattern at intervals of the desired split size, and (3) Individually saving each segmented image.
+
+1. Add padding to set the original image to a multiple of
+the sub-image size we wish to obtain from the split.
+2. Establish boundaries for an even split.
+3. Cut the original image to obtain the smaller
+sub-images.
+
+3.1.2
+
+Text detection
+
+The text detection method utilizes an optical character
+recognition (OCR [28]) approach. An appealing attribute
+of this method when implemented on handwritten documents is that the resulting sub-images mostly contain full
+words. This is in contrast to the simple split, where each
+sub-image can include portions of words and of characters. While here the extracted images contain words, the
+text detection approach does not preserve sentence level
+features. There are many different text detection models
+available in the literature; we used the Character Region
+Awareness for Text Detection (CRAFT [2]) model developed by Naver Cloud Virtual Assistant (CLOVA) AI. The
+steps in this text detection split method are shown in
+Figure 4, and the specific approach is as follows:
+1. Use the text detection model on a document image to
+define a rectangular area containing each word.
+2. Each rectangle is a new sub-image.
+3. Resize the sub-images to have equal size.
+When handwriting is disconnected, text detection
+methods may split a word into two or more rectangular
+areas.
+
+3.1.3
+
+Document split using bootstrapping
+
+The simple split method and the text detection method
+that relies on text identification can result in a low number
+
+of sub-images when the original document is short. In the
+case of the simple split, we could reduce the size of each
+sub-image, but only at the expense of the amount of writing that is included in each. One approach to overcome this
+problem is to implement a resampling method such as the
+bootstrap [1, 12].
+The bootstrap is a resampling approach that is typically
+used to approximate the sampling distribution of almost
+any statistic. Simple bootstrapping consists in repeatedly
+resampling with replacement from some population to
+draw inferences about population parameters. Here, we
+propose an algorithm that applies the idea of bootstrapping
+to handwriting, repeatedly resampling small sub-images
+from the handwritten document. When the number of
+bootstrap samples, denoted by n, is sufficiently large, collection of sub-samples are likely to improve over the simple
+split at least in terms of information content. Moreover,
+by varying the size of the bootstrapped images, it is possible to extract sentence level features that the simple split
+and the text detection methods cannot preserve. The bootstrap method we propose is illustrated in Figure 5, and the
+algorithm can be found in Algorithm 1. The steps in the
+approach are as follows:
+1. Use text detection to find the areas where text exists.
+2. Repeatedly resample the original image to obtain
+sub-images of the desired size from the area where text
+exists.
+We use the idea of information content in each
+sub-image to decide whether to keep a specific sub-image
+or to continue resampling. The images of handwritten documents in the databases we use are composed of black
+text on a white background. Typically, pixels with intensity value close to 0 are black, and those with intensity
+value close to 255 are white. To characterize the amount of
+
+19321872, 2024, 1, Downloaded from https://onlinelibrary.wiley.com/doi/10.1002/sam.11660 by South Korea National Provision, Wiley Online Library on [19/02/2024]. See the Terms and Conditions (https://onlinelibrary.wiley.com/terms-and-conditions) on Wiley Online Library for rules of use; OA articles are governed by the applicable Creative Commons License
+
+KIM et al.
+
+KIM et al.
+
+F I G U R E 4 Schematic diagram of text detection process: (1) Using a detection model to identify the regions of individual words in the
+document, (2) Extracting small images from the regions of individual words, and (3) Resizing the extracted images to the desired split size.
+
+F I G U R E 5 Schematic diagram of bootstrapping process: (1) Document cropping, (2) A bootstrapping approach for segmenting the
+document into smaller components, (3) Determination of a threshold through an analysis of pixel value distributions, and (4) Resampling of
+bootstrapped images when the discernible handwriting information falls below the established threshold.
+
+19321872, 2024, 1, Downloaded from https://onlinelibrary.wiley.com/doi/10.1002/sam.11660 by South Korea National Provision, Wiley Online Library on [19/02/2024]. See the Terms and Conditions (https://onlinelibrary.wiley.com/terms-and-conditions) on Wiley Online Library for rules of use; OA articles are governed by the applicable Creative Commons License
+
+6 of 19
+
+Algorithm 1. Proposed document split method using
+bootstrapping
+Require: Large image I, cropping size s, number of iterations n.
+Ensure: Resampled n cropped image samples.
+1: for i = 1 to n do
+2:
+Randomly select a region Ri of size s from image I.
+3:
+Crop region Ri and save as a new image sample Si .
+4: end for
+5: For each image sample Si , calculate the sum of pixel values where black pixels are close to 255 and white pixels
+are close to 0. This average represents the information
+content of Si .
+6: Calculate the average 𝜇 and standard deviation 𝜎 of the
+information content from the n image samples Si .
+7: Set the threshold T as 𝜇 − k × 𝜎 where k is a constant
+corresponding to the user-selected percentile from the
+standard normal distribution table.
+8: for each image sample Si do
+9:
+if information content of Si < T then
+10:
+Remove Si .
+11:
+Resample a new image sample based on T and
+save as Si .
+12:
+Continue this resampling process until the
+information content of the new Si is greater than
+or equal to T.
+13:
+end if
+14: end for
+
+text in a sub-image, we calculate the information content
+for each sub-image. To do so, we invert the pixel values,
+so that pixels with low intensity classified as white and
+those with intensity close to 255 are classified as black.
+The average pixel value in a sub-image is defined as the
+information content of that image. The histogram on the
+bottom-left panel in Figure 5 shows the distribution of
+information content obtained from n bootstrapped images.
+We discard and resample those images with information
+content below a given threshold.
+
+3.2
+Extracting features from
+the documents in the comparison
+Deep learning algorithms extract information from original images and transform that information into features
+which concisely represent the input image. In this step,
+the model identifies important patterns, characteristics,
+and structures in images, which are then summarized into
+feature vectors. To learn how these features are associated to some output, models are trained on vast databases
+of labeled images. In applications such as the forensic
+
+7 of 19
+
+evaluation of questioned documents, there is a dearth of
+labeled samples on which to train a model, so we rely
+on transfer learning by using pretrained models. In this
+work, we extracted features using three pretrained models: ResNet [17], EFF [32], and VIT [11]. The three models
+are used widely, and have been shown to have good performance (see, [27]). We briefly describe each model below.
+
+3.2.1
+
+ResNet: Residual Network
+
+The Residual Network (ResNet) [17] model was developed to address the vanishing gradient problem and performance degradation in deep neural networks. Unlike
+conventional deep neural networks, which tend to become
+harder to train and decrease in performance as they grow
+deeper, ResNet can be effectively trained even in deep
+networks. The core architecture of ResNet is “Residual
+connections” [17]. To make residual connections, the network adds the input of each layer directly to its output
+several layers ahead, thereby allowing the network to learn
+only the residual between the input and output.
+
+3.2.2
+
+EFF: Efficient Network
+
+The Efficient Network (EFF) [32] model was developed
+to maximize both efficiency and performance in deep
+learning. While CNN-based structures focused on individually adjusting depth, width, and resolution, the EFF is
+based on the concept of “Compound scaling” [32], a new
+method that simultaneously adjusts these three elements.
+The model exhibits high performance even when computational resources are limited. Despite the small model size
+and low computational cost, EFF can be quite accurate for
+image classification and other computer vision tasks.
+
+3.2.3
+
+VIT: Vision Transformer
+
+The Vision Transformer (VIT) [11] model applies the
+Transformer [34] model, which arose in the field of natural language processing. Before VIT, the field of image
+processing was largely reliant on convolutional neural networks (CNNs). The VIT model for image recognition problems is different, in that it converts images into sequence
+data for processing. To do so, the model segments an
+image into multiple small patches and then transforms
+each patch into an input sequence for the transformer.
+These patches are then processed through the transformer
+model’s attention mechanism [34], which allows it to learn
+about the context of the entire image and the relationships
+between each patch. Positional encoding [34] provides the
+model with spatial location information of each patch,
+
+19321872, 2024, 1, Downloaded from https://onlinelibrary.wiley.com/doi/10.1002/sam.11660 by South Korea National Provision, Wiley Online Library on [19/02/2024]. See the Terms and Conditions (https://onlinelibrary.wiley.com/terms-and-conditions) on Wiley Online Library for rules of use; OA articles are governed by the applicable Creative Commons License
+
+KIM et al.
+
+KIM et al.
+
+F I G U R E 6 The structure of latent vector generators; (A) Input image goes through a feature extractor and encoder layer that outputs a
+latent vector which then passes through decoder, (B) A pair of input images pass through the feature extractor to output a latent vector for
+each document and from which the model quantifies the similarity between the two vectors.
+
+which is important for the model’s understanding of how
+the various parts of the image interact.
+
+3.3
+
+Generating latent vectors
+
+Unobserved latent vectors provide a lower-dimensional
+representation of an image by compressing the feature vectors even further. The latent vectors are supposed to contain the essential attributes of the original image, allowing
+classification of images into multiple classes, generation of
+new images, or finely tuned comparison of images.
+We consider two methods to generate latent vectors.
+The first method involves combining an autoencoder [15]
+with the feature extractor to produce the latent vector,
+where the model was trained using a multi-classification
+task as the goal. The second method follows the approach
+used by Lim and Ommen [22], which relies on a siamese
+network [7] to output the latent vector, with training
+carried out for good performance on a binary classification
+task.
+
+a decoder as in Figure 6A. The encoder compresses the
+input data into a lower-dimensional representation in the
+latent space, while the decoder reconstructs it back to its
+original high dimensional form. Autoencoders are trained
+to minimize the differences between the input and the
+regenerated image. In multi-classification tasks, the loss
+function is often the multi-cross entropy (MCE) shown in
+Equation (2):
+K
+∑
+( (k) )
+̂
+MCE(y, y) = − y(k) log ̂
+y .
+
+In Equation (2), y(k) represents a binary indicator (0 or
+1) if class label k is the correct classification for the observation, and ̂
+y(k) is the predicted probability of the observation
+being of class k. The sum runs over all K classes. Minimizing the MCE is equivalent to maximizing the conditional
+multinomial likelihood of the predicted observations given
+the input data.
+
+3.3.2
+3.3.1
+
+(2)
+
+k=1
+
+Siamese network
+
+Autoencoder
+
+An autoencoder [15] is a neural network typically used
+for compressing and reconstructing input data by condensing the most important features of the data. The main
+idea is to obtain a low-dimensional representation of the
+input image that captures the important information in
+the image. Autoencoders are composed of an encoder and
+
+The siamese network [7] is a neural network that takes
+two inputs, processes each through the same network,
+and outputs a single result, used for measuring the similarity between the two inputs. The siamese network is
+composed of a feature extractor and layer to calculate a
+similarity metric. The similarity metric is based on the
+extracted features from both inputs. Figure 6B illustrates
+
+19321872, 2024, 1, Downloaded from https://onlinelibrary.wiley.com/doi/10.1002/sam.11660 by South Korea National Provision, Wiley Online Library on [19/02/2024]. See the Terms and Conditions (https://onlinelibrary.wiley.com/terms-and-conditions) on Wiley Online Library for rules of use; OA articles are governed by the applicable Creative Commons License
+
+8 of 19
+
+9 of 19
+
+the process of generating a latent vector using a siamese
+network structure. Siamese networks are useful when the
+goal is to compare two inputs and determine whether they
+may belong to the same class. For a binary classification
+task, a commonly used loss function is the binary cross
+entropy (BCE) shown in Equation (3):
+BCE(y, ̂
+y) = −(y log(̂
+y) + (1 − y) log(1 − ̂
+y)).
+
+4.1
+Center for statistics and forensic
+evidence database
+
+(3)
+
+In Equation (3), y and ̂
+y denote the true label (0 or 1)
+and the predicted probability of same class, respectively.
+The total loss is the mean of the BCE loss computed for
+each pair of images.
+
+3.4
+Quantifying similarity between two
+latent vectors
+Once the important features of input images have been
+represented in lower dimensional space via latent vectors, the next step is to quantify the similarity between
+those vectors. One measure of the similarity between two
+vectors is the cosine similarity, which numerically compares the directionalities of two vectors by calculating the
+cosine value of the angle between them. This value ranges
+between −1 and 1, where 1 indicates that the vectors
+are in the same direction, 0 indicates orthogonality, and
+−1 indicates that the vectors point in opposite directions.
+An equation for calculating cosine similarity between two
+vectors A and B is given in Equation (4):
+Cosine similarity(A, B)
+∑n
+A⋅B
+i=1 Ai Bi
+=
+=√
+.
+√∑
+∑n
+||A||||B||
+n
+2
+2
+A
+B
+i=1 i
+i=1 i
+
+/cvl-databases. Both databases include writing samples
+from a large number of individuals. We briefly describe
+each below.
+
+(4)
+
+here, the dot product A ⋅ B represents the sum of the products of the vector elements, while ||A|| and ||B|| denote the
+magnitudes of vectors A and B, respectively. Ai and Bi are
+the ith elements of vectors A and B, and n represents the
+dimension of the vectors.
+
+4
+APPLICAT ION: QUANTIFYING
+SIMILARITY BETWEEN TWO
+HANDWRITTEN DOCUMENTS
+We now implement the deep learning method we propose
+using two publicly available databases of handwritten documents. The database assembled by CSAFE researchers
+[8] can be downloaded from www.forensicstat.org. The
+CVL dataset [21] by scientists in the Technical University
+Wien can be accessed via https://cvl.tuwien.ac.at/research
+
+The CSAFE handwriting data [8] was collected in 2020 at
+Iowa State University. The dataset is continually updated,
+and in this study, version 4 was used. Version 4 includes
+data from 344 individuals. Each participant provided
+handwriting samples on three occasions separated by at
+least 3 weeks. In each of those occasions, participants
+were asked to copy three different prompts three times
+each, in random order. The three prompts include LND
+(“The London Letter,” 86 words), WOZ (“The Wonderful
+Wizard of Oz by L. Frank Baum,” 67 words), and PHR
+(“Short Common Phrase,” 14 words). Figure 7 shows samples of the three types of phrases from the CSAFE data.
+LND and WOZ are relatively long documents with over
+60 words, while PHR is a short document with only 14
+words. We used the samples contributed by 300 randomly
+selected participants for training the models. Writing samples from the remaining 44 participants were used for
+testing.
+
+4.2
+
+Computer vision lab dataset
+
+The CVL dataset [21] was collected in 2013 at the Vienna
+University of Technology. Here, we use version 1.1 of the
+dataset. Writing samples were collected from 310 individuals, with 27 of them writing seven documents each and 283
+writing five documents each. We used five documents from
+309 individuals, excluding anyone with missing data. The
+prompts used were ROD (“A Romance of Many Dimensions by Edwin A. Abbott,” 90 words), MAC (“Macbeth by
+William Shakespeare,” 47 words), MAI (“Mailufterl from
+Wikipedia,” 74 words), OOS (“Origin of Species by Charles
+Darwin,” 52 words), and POD (“The Picture of Dorian
+Gray by Oscar Wilde,” 65 words). Figure 8 shows samples
+of the five types of prompts from the CVL data. Unlike the
+CSAFE database, the CVL database does not include replicate samples and lacks short prompts. We used the CVL
+database for testing.
+
+4.3
+
+Proposed model structures
+
+In this section, we illustrate the implementation of the
+autoencoder structure and the siamese network structure
+to quantify the similarity between two documents and—if
+
+19321872, 2024, 1, Downloaded from https://onlinelibrary.wiley.com/doi/10.1002/sam.11660 by South Korea National Provision, Wiley Online Library on [19/02/2024]. See the Terms and Conditions (https://onlinelibrary.wiley.com/terms-and-conditions) on Wiley Online Library for rules of use; OA articles are governed by the applicable Creative Commons License
+
+KIM et al.
+
+KIM et al.
+
+F I G U R E 7 Samples of handwriting data from the Center for Statistics and Forensic Evidence handwriting dataset [8]. Samples are
+“WOZ,” “LND,” and “PHR” respectively.
+
+F I G U R E 8 Samples of handwriting data from the Computer Vision Lab dataset [21]. Samples are “ROD,” “MAC,” “MAI,” “OOS,” and
+“POD” respectively.
+
+desired—classify the pairs into one of two classes: same or
+different author.
+The autoencoder architecture, is shown in Figure 9A,
+was utilized for the preprocessing of document data. In the
+preprocessing stage, a document was segmented into small
+images. These cropped images were then passed through
+a feature extractor to be represented as vectors. We used
+samples from 300 contributors to the CSAFE database for
+training, so the feature extractor outputs 300-dimensional
+vectors.
+The 300-dimensional vectors obtained after feature
+extraction are compressed to 200 dimensions through a
+linear layer that takes 300 dimensions as input. Another
+linear layer then takes 200-dimensional vectors as input
+and outputs 100-dimensional vectors. Finally, one more
+
+linear layer compresses the 100-dimensional vectors into
+50-dimensional generalized latent vectors. Rectified linear unit (ReLU) functions were applied after each linear
+layer to capture the nonlinearity of the data. To train the
+model, the decoder reconstructs the input observations by
+passing the 50-dimensional latent vectors through linear
+layers that output 100-, 200-, and 300-dimensional vectors,
+respectively.
+The testing step is shown in Figure 9B. The trained
+model consists of the encoder layers including the
+layer that outputs the generalized latent vector in
+50-dimensional space.
+To test the model, pairs of documents to be compared
+are first split into cropped images during the preprocessing stage and are then represented as latent vectors using
+
+19321872, 2024, 1, Downloaded from https://onlinelibrary.wiley.com/doi/10.1002/sam.11660 by South Korea National Provision, Wiley Online Library on [19/02/2024]. See the Terms and Conditions (https://onlinelibrary.wiley.com/terms-and-conditions) on Wiley Online Library for rules of use; OA articles are governed by the applicable Creative Commons License
+
+10 of 19
+
+11 of 19
+
+FIGURE 9
+
+Used architecture of autoencoder structure in this paper; (A) Train architecture, (B) Test architecture.
+
+F I G U R E 10
+
+Used architecture of siamese network structure in this paper; (A) Train architecture, (B) Test architecture.
+
+the trained model. One latent vector is obtained from each
+cropped image, and are then averaged, resulting in a final
+50-dimensional vector representing the handwritten document. The degree of similarity between two documents is
+quantified via the cosine similarity of these latent vectors,
+and can be used to determine whether the two documents
+may have been written by the same person.
+
+Figure 10A shows the architecture of the Siamese network we implemented next. Here, cropped images from
+each of the two documents in the comparison are paired
+and passed through a feature extractor. The feature extractor is configured to output a 300-dimensional vector, mirroring the autoencoder structure. Each pair of cropped
+images is represented by a pair of 300-dimensional vectors
+
+19321872, 2024, 1, Downloaded from https://onlinelibrary.wiley.com/doi/10.1002/sam.11660 by South Korea National Provision, Wiley Online Library on [19/02/2024]. See the Terms and Conditions (https://onlinelibrary.wiley.com/terms-and-conditions) on Wiley Online Library for rules of use; OA articles are governed by the applicable Creative Commons License
+
+KIM et al.
+
+which are compressed into 50 dimensions via a linear layer. By computing the difference between these
+latent vectors we obtain a single 50-dimensional vector
+that summarizes the similarity of the two input document images. To complete training of the model, this
+50-dimensional vector undergoes a series of transformations: passes through a linear layer that takes 50 dimensions as input, followed by ReLU functions and dropout
+[31], then another linear layer that takes 50 dimensions
+as input and ultimately outputs a scalar that takes on the
+value 1 if both documents are classified into “same writer”
+class and the value 0 otherwise. Figure 10B shows the
+testing process, which equals the testing process of the
+autoencoder structure.
+We constrained image size to 224 × 224 to match the
+dimensions on which the pretrained feature extractors
+introduced in Section 3.2 were pretrained. Regarding
+document splitting, we used the bootstrap sampling
+approach we proposed earlier, and obtained 1000 cropped
+images from the CSAFE handwriting prompts LND and
+WOZ, and 200 cropped images from the shorter prompt,
+PHR. In cases where the selected image contains less than
+10% information threshold in Figure 5, we resampled to
+draw a new cropped image.
+
+4.4
+Results: Testing the models on a
+subset of CSAFE writers
+We first evaluate the performance of the various models
+we propose by testing the trained models on the documents contributed by the subset of 44 CSAFE participants
+that were not included in the training stage. We separately
+consider different model components, and test model performance on documents of varying lengths.
+
+4.4.1
+Autoencoder versus Siamese
+architectures
+Differences in performance between the autoencoder and
+the siamese network structures are shown in Table 1. For
+this comparison, we used the VIT and the EFF models to
+extract features from the input images. In general, models
+trained with an autoencoder structure did better in terms
+of AUC and classification accuracy than the models with a
+siamese network structure.
+Interestingly, the siamese network had the worst performance when we implemented the bootstrap to resample
+the cropped images. This is consistent with the findings of
+Lim and Ommen [22] and highlights a limitation of the
+siamese network [7], where the addition of more data does
+not necessarily lead to an improvement in performance.
+
+KIM et al.
+
+TA B L E 1
+
+Performance comparison between latent vector
+
+generators.
+Latent
+vector
+generator
+
+Preprocess
+
+Autoencoder
+
+Bootstrapping VIT
+
+0.972 90.84
+
+EFF
+
+0.940 87.40
+
+Text detection VIT
+
+0.937 87.78
+
+EFF
+
+0.938 86.65
+
+VIT
+
+0.909 84.87
+
+EFF
+
+0.911 84.26
+
+Bootstrapping VIT
+
+0.872 79.50
+
+EFF
+
+0.881 81.27
+
+Text detection VIT
+
+0.951 87.70
+
+EFF
+
+0.928 85.37
+
+VIT
+
+0.955 88.93
+
+EFF
+
+0.898 81.45
+
+Simple split
+
+Siamese
+
+Simple split
+
+Feature
+extractor AUC Accuracy
+
+Note: VIT: Vision Transformer 16patch, EFF: EfficientNet_B0.
+
+The combination of the bootstrap and the VIT which is a
+pretrained feature extractor was particularly problematic.
+In this instance, overtraining of the model seems to have
+occurred, probably as a result from the fact that bootstrapping creates more input data in an epoch when compared
+to the simple split approach.
+In contrast, when using the autoencoder, the bootstrap
+approach outperformed the text detection and the simple
+split methods, which again is consistent with results that
+have been observed in traditional deep learning training
+approaches. These findings suggest that the differences in
+performance between the two models may widen even further as the amount of data available for training increases.
+
+4.4.2
+Differences in performance between
+feature extractors and preprocessing methods
+Here, we focus on examining the differences in performance that result from using different preprocessing
+approaches and different pretrained features extractors. In
+the remainder, we only consider models with the autoencoder structure to generate latent vectors. Results are
+shown in Table 2.
+Overall, the VIT model outperformed the EFF and the
+ResNet models in terms of AUC and classification accuracy. The VIT model did best when document preprocessing was carried out using a combination of bootstrapping
+and text detection methods. Notably, in the case of the VIT
+model, we observed that the more information extracted
+
+19321872, 2024, 1, Downloaded from https://onlinelibrary.wiley.com/doi/10.1002/sam.11660 by South Korea National Provision, Wiley Online Library on [19/02/2024]. See the Terms and Conditions (https://onlinelibrary.wiley.com/terms-and-conditions) on Wiley Online Library for rules of use; OA articles are governed by the applicable Creative Commons License
+
+12 of 19
+
+13 of 19
+
+T A B L E 2 Performance comparison of Center for Statistics
+and Applications in Forensic Evidence data focusing on changes
+between preprocess and feature extractor when using autoencoder
+structure as latent vector generator.
+Preprocess
+Bootstrapping +
+Text detection
+
+Bootstrapping
+
+Text detection
+
+Simple split
+
+T A B L E 3 Performance analysis of the Center for Statistics
+and Applications in Forensic Evidence data for each prompt using
+Strategy A.
+Prompt
+
+AUC
+
+Accuracy
+
+Accuracy
+
+All
+
+0.987
+
+94.45
+
+0.987
+
+94.45
+
+WOZ
+
+0.992
+
+95.83
+
+EFF
+
+0.941
+
+87.16
+
+LND
+
+0.992
+
+95.86
+
+ResNet
+
+0.959
+
+88.88
+
+PHR
+
+0.983
+
+93.47
+
+VIT
+
+0.972
+
+90.84
+
+EFF
+
+0.940
+
+87.40
+
+ResNet
+
+0.967
+
+89.61
+
+VIT
+
+0.937
+
+87.78
+
+EFF
+
+0.938
+
+86.65
+
+ResNet
+
+0.962
+
+89.06
+
+VIT
+
+0.909
+
+84.87
+
+EFF
+
+0.911
+
+84.87
+
+ResNet
+
+0.937
+
+86.57
+
+Feature
+extractor
+
+AUC
+
+VIT
+
+Note: VIT: Vision Transformer 16patch, EFF: EfficientNet_B0, ResNet:
+ResNet 18.
+
+which were unable to integrate features from text detection
+and bootstrapping. When input images were preprocessed
+using text detection and simple split, the information provided by the cropped images is relatively scarce. In those
+cases, ResNet exhibited superior performance over the
+VIT. This may imply that the ResNet, with fewer parameters to train, can learn more easily in situations where
+training data are limited.
+From the discussion, we conclude that the model structure that showed the best performance involved using
+bootstrapping and text detection in the preprocessing step,
+with the VIT as feature extractor and an autoencoder for
+generating latent vectors. We will refer to this model structure as “Strategy A.”
+
+4.4.3
+Effect of the length of the questioned
+document
+
+F I G U R E 11 Receiver operating characteristic (ROC) curve
+for Center for Statistics and Applications in Forensic Evidence data
+using various preprocessing methods with Vision Transformer as
+the feature extractor.
+
+from the input documents during preprocessing, the better
+the model performance. As shown by the ROC curves in
+Figure 11, performance improves when we progress from
+simple split to text detection to bootstrapping and finally
+to the combination of bootstrapping and text detection.
+This suggests that to improve performance even further,
+we should increase the size of the training dataset. This
+does not appear to hold for the EFF and the ResNet models,
+
+Methods proposed by Crawford et al. [10] and others
+to quantify similarity between handwritten documents
+perform well as long as the questioned document is long
+enough. But in real life, evidence such as a signature or
+a short threatening note contain too few characters to
+enable implementation of methods such as those proposed
+in Crawford et al. [9]. We set out to evaluate the performance of the deep learning approach we propose on
+documents of varying length, and found that the method
+we propose is robust and does not depend on the length
+of the questioned document. In Table 3, for each prompt,
+the AUC and accuracy are achieved by Strategy A in the
+CSAFE study. For the WOZ and LND prompts, which are
+long, the AUC was high at about 0.992. However, when
+the questioned document was the PHR, composed of only
+14 words, the AUC was 0.983, not significantly different
+from 0.992. When relying on a Bayesian hierarchical modeling approach, Crawford et al. [10] argued that at a minimum, a word count of about 30 words was required for
+their methods to exhibit acceptable accuracy. Their findings indicated a significant performance drop of over 7%
+in accuracy when comparing short documents to documents with more than 70 words. In contrast, Strategy A
+
+19321872, 2024, 1, Downloaded from https://onlinelibrary.wiley.com/doi/10.1002/sam.11660 by South Korea National Provision, Wiley Online Library on [19/02/2024]. See the Terms and Conditions (https://onlinelibrary.wiley.com/terms-and-conditions) on Wiley Online Library for rules of use; OA articles are governed by the applicable Creative Commons License
+
+KIM et al.
+
+KIM et al.
+
+F I G U R E 12 Graphical representations of the Center for Statistics and Applications in Forensic Evidence test data reduced to two
+dimensions, achieved by applying dimensionality reduction techniques on 50 vectors when using Strategy A; (A) t-Stochastic Neighbor
+Embedding results, (B) Uniform Manifold Approximation and Projection results, and (C) Principal Component Analysis results.
+
+only showed a performance drop of about 3% in accuracy
+when classifying the PHR document with only 14 words,
+when compared to the LND and WOZ both of which have
+more than 60 words. We conclude that Strategy A is robust
+to document length.
+
+4.4.4
+
+Data reduction and visualization
+
+In the analysis of high-dimensional data, dimensionality
+reduction techniques are essential for enabling visualization and interpretation of the observations. Here, we
+use t-distributed Stochastic Neighbor Embedding (t-SNE
+[33]), Uniform Manifold Approximation and Projection
+(UMAP [24]), and Principal Component Analysis (PCA
+[16]) to reduce the dimensionality of the documents in the
+CSAFE database from 50 dimensions to two dimensions
+for visualization.
+The t-SNE preserves the local neighbor structure by
+maintaining the similarity of high-dimensional vectors in
+lower dimensions. The method involves choosing a reference point and calculating the distance to all other data
+points, then selecting the corresponding t-distribution
+value, to group similar data points together. If the size of
+the dataset is n, the computational complexity increases
+by the square of n, and each run yields different visualization results. The t-SNE can only reduce data to two
+or three dimensions. The UMAP, based on a neighboring graph, creates a graph from data in high-dimensional
+space and then projects this graph onto a lower dimension. In general, UMAP is faster than t-SNE and is
+not limited by the size of the embedding space, making it a more generally applicable dimensionality reduction algorithm. PCA is a statistical method that reduces
+the size of high-dimensional data while preserving the
+most important information. This method finds new axes
+
+that summarize the information of the original variables
+while minimizing loss and maximizing the variance of the
+resulting data points. The process involves quantifying the
+explanatory power of the reduced dimensions, by how well
+they explain the variance of the original data. The explanatory power of each principal component is expressed as a
+proportion of the total variance.
+Figure 12 shows how to visualize the CSAFE test documents using the three methods introduced above. Visualizing all 44 authors in the test dataset would result in
+insufficient colors to represent labels, so we randomly
+selected nine authors for illustration. Figure 12A shows
+the results of applying t-SNE to the input data, where we
+can distinguish the global structure between labels and the
+variability within labels. Figure 12B shows the results after
+applying UMAP with very dense clusters, where we see
+that UMAP preserves the global structure well but does not
+explain the internal variability of the labels as effectively as
+t-SNE. Finally, Figure 12C displays the PCA results. Compared to the t-SNE and the UMAP groupings, we see that
+clustering is not as effectively performed, which may be
+due to PCA’s limitations in capturing nonlinear relationships within the data. We find that t-SNE was the most
+effective approach to visually separate clusters that correspond to labels in the CSAFE handwritten documents
+database.
+Both the t-SNE and the UMAP clusters in Figure 12
+confirm the fundamental assumption that a person’s handwritten characters are discriminating and can help identify
+the writer of a questioned document. When embedded
+in two-dimensional space, the latent vectors that represent the important attributes of handwriting show that
+the between-writer variance is substantially larger than
+the within-writer variance, a result consistent with the
+high accuracy that was achieved when classifying pairs of
+documents into same or different writer classes.
+
+19321872, 2024, 1, Downloaded from https://onlinelibrary.wiley.com/doi/10.1002/sam.11660 by South Korea National Provision, Wiley Online Library on [19/02/2024]. See the Terms and Conditions (https://onlinelibrary.wiley.com/terms-and-conditions) on Wiley Online Library for rules of use; OA articles are governed by the applicable Creative Commons License
+
+14 of 19
+
+15 of 19
+
+T A B L E 4 Performance comparison of Computer Vision Lab
+data focusing on changes between preprocess and feature extractor
+when using autoencoder structure as latent vector generator.
+Preprocess
+Bootstrapping +
+Text detection
+
+Bootstrapping
+
+Text detection
+
+Simple split
+
+Feature
+extractor
+
+AUC
+
+Accuracy
+
+VIT
+
+0.993
+
+97.15
+
+EFF
+
+0.984
+
+94.26
+
+ResNet
+
+0.991
+
+96.26
+
+VIT
+
+0.992
+
+96.55
+
+EFF
+
+0.984
+
+94.21
+
+ResNet
+
+0.992
+
+96.97
+
+VIT
+
+0.992
+
+96.96
+
+EFF
+
+0.958
+
+85.11
+
+ResNet
+
+0.913
+
+83.79
+
+VIT
+
+0.990
+
+95.99
+
+EFF
+
+0.983
+
+94.11
+
+ResNet
+
+0.991
+
+96.23
+
+Note: VIT: Vision Transformer 16patch, EFF: EfficientNet_B0, ResNet:
+ResNet 18.
+
+4.5
+Results: Testing the models on CVL
+writers
+To test how the deep learning models—that were trained
+on CSAFE handwritten documents—perform on a completely different set of samples, we implemented them on
+a subset of the CVL dataset, and attempted to classify pairs
+of documents into same or different writer. Some results
+are shown in Table 4. Unlike the CSAFE database, the
+CVL dataset does not include replicates for each prompt.
+Additionally, none of the prompts are as short as the PHR
+prompt of in the CSAFE database. Consequently, classification accuracy of pairs of CVL samples was high overall,
+and even higher when compared to testing results for the
+CSAFE data. The model structure that showed the best
+performance on the CSAFE data, which we called Strategy A, also exhibited the best performance when using the
+CVL data for testing.
+In forensic practice, examiners are beginning to move
+away from offering categorical opinions (e.g., same or different writer) toward the use of probabilistic statements,
+often in the form of a likelihood ratio (see, [10, 20, 26]). On
+this context, the LR in its simplest form is calculated as:
+LR =
+
+Pr(E|H1 )
+,
+Pr(E|H2 )
+
+where E denotes “evidence,” and H1 and H2 are the
+competing propositions of same and different source,
+respectively. The LR is used as a metric to calculate the
+
+strength of the evidence in support of one or the other
+propositions, and reported as the odds of observing the
+evidence if H1 rather than H2 is true.
+For pattern comparison disciplines such as handwriting, where highly multivariate features are summarized
+into a single similarity metric, the likelihood ratio is
+approximated by what is known as a score-based likelihood ratio (SLR), which represents the odds of observing
+a given degree of similarity between two items if the items
+have a common source. To compute the probabilities in
+the numerator and denominator of the SLR, one needs to
+know the distributions of the similarity metric under each
+of the two propositions. The distributions can be approximated experimentally using many pairs of items for which
+source is known.
+Figure 13 shows the distributions of similarity values
+calculated using the trained Strategy A model and the testing datasets constructed from the CSAFE and the CVL
+databases. The left panel in the figure shows the distributions calculated using the CSAFE testing subset, and the
+right panel shows the distributions obtained from the CVL
+testing dataset. In both cases, the blue distribution corresponds to similarities computed for pairs of documents
+with different writers and the red distribution corresponds
+to similarities observed when a pair of documents were
+written by the same person.
+As expected, similarity tends to be higher when documents are written by the same person, although that is not
+always the case. Ideally, the two distributions would show
+no overlap so that given a similarity value s computed from
+a questioned pair of documents in a case, Pr(s|Hi ) >>>
+(
+)
+Pr s|H𝑗 , for i ≠ 𝑗 = 1, 2. The resulting SLR in this case
+would then clearly indicate whether the evidence supports
+one or the other hypothesis. In our application, there is
+minimum overlap. For an observed similarity s, the SLR
+can be approximated as the ratio of the heights of the two
+distributions evaluated at s.
+
+5
+
+DISCUSSION
+
+Deep learning methods show real promise in forensic
+applications. Here, we have explored different model
+architectures and have evaluated their classification accuracy when applied to images of handwriting.
+We separately considered the different components of
+the model to decide on a combination that exhibited good
+performance when implemented on different sets of documents, and on documents of different length. Overall,
+we considered four different approaches for preprocessing input images, three pretrained models to extract features from those images, and two architectures to compress information into a low-dimensional latent space and
+
+19321872, 2024, 1, Downloaded from https://onlinelibrary.wiley.com/doi/10.1002/sam.11660 by South Korea National Provision, Wiley Online Library on [19/02/2024]. See the Terms and Conditions (https://onlinelibrary.wiley.com/terms-and-conditions) on Wiley Online Library for rules of use; OA articles are governed by the applicable Creative Commons License
+
+KIM et al.
+
+KIM et al.
+
+F I G U R E 13 The distribution of cosine similarity when using Strategy A. Blue indicates different pairs, and red indicates the same
+pairs; (A) results for the Center for Statistics and Applications in Forensic Evidence dataset, (B) results for the Computer Vision Lab dataset.
+
+F I G U R E 14 2D visualization applying t-Stochastic Neighbor Embedding dimensionality reduction on Center for Statistics and
+Applications in Forensic Evidence data when using Strategy A; (A) visualization for nine randomly selected authors out of 44, (B) graphs
+emphasizing authors numbered 321 and 336. The labels in the upper graph are divided by prompt type: WOZ is represented with circles,
+LND with triangles, and PHR with squares. The labels in the lower graph are divided by season: season one is represented with circles,
+season two with triangles, and season three with squares.
+
+quantify similarity using latent vectors of features. As is
+typically the case with deep learning algorithms and as
+discussed in Section 4.1, models involve hundreds or even
+thousands of hyperparameters. We did not attempt to optimize the value of the hyperparameters in the models we
+fitted to the data, meaning that it might be possible to
+improve the performance of the models via more careful
+tuning of model parameters.
+Even though the preferred model showed high classification accuracy in both the CSAFE and the CVL datasets,
+there were instances of misclassification. For example,
+in the case of the CSAFE data, misclassifications sometimes occurred when the two documents were written
+by the same person but on different occasions. This was
+
+nicely visualized using t-SNE as shown in Figure 14. In
+Figure 14A, we see that writer #321 is split into two distinct clusters. To understand the reason, we used shapes
+to label instances where the documents in the comparison involved different prompts (top panel in Figure 14B) or
+different writing occasions (bottom panel in Figure 14B).
+While no interesting patterns were found when looking
+at prompts, we did find that one of the clusters was composed of documents written during the first data collection occasion and the other cluster grouped documents
+written on the second and third occasions. To investigate
+further, we looked at samples from writer #321, shown
+in Figure 15. It appears that the writing is darker in seasons two and three compared to season one. This suggests
+
+19321872, 2024, 1, Downloaded from https://onlinelibrary.wiley.com/doi/10.1002/sam.11660 by South Korea National Provision, Wiley Online Library on [19/02/2024]. See the Terms and Conditions (https://onlinelibrary.wiley.com/terms-and-conditions) on Wiley Online Library for rules of use; OA articles are governed by the applicable Creative Commons License
+
+16 of 19
+
+17 of 19
+
+F I G U R E 15 Example divided into two groups when visualized using t-Stochastic Neighbor Embedding in Center for Statistics and
+Applications in Forensic Evidence data. Seasons two and three have thicker and darker writing, compared to season one.
+
+that the person used different writing tools and that writing tool can be a factor that affects model performance.
+One possible approach to ameliorate the effect of writing
+tool might be to consider pixel normalization as part of the
+preprocessing stage. Writer #336 was also represented by
+two distinct (but close) clusters. In this case, we observed
+that word-level features representing individual characters were very similar, but there were differences between
+sentence-level features in documents written by #336. This
+may have been a result of the preprocessing step, in which
+we uniformly split the original document data into small
+224 × 224 images, which does not preserve sentence-level
+information. A possible solution may be to disaggregate
+the original image into small images of varying size for
+bootstrapping, and then resizing them.
+Finally, we revisited the PCA-based dimensionality
+reduction that we applied to the latent vectors obtained
+from CSAFE and CVL test sets. Results are shown in
+Figure 16. We found that reducing 50-dimensional vectors to about 20 dimensions explains over 99.9% of the
+variability. This suggests that the feature extractor in the
+model captures about 20 inherent characteristics of a person’s handwriting. Additionally, the fact that the explanatory power of the first principal component is below 20%
+indicates that it would be difficult to represent the complex features of handwriting with low-dimensional vectors
+alone.
+The deep learning-based image comparison analysis
+method proposed here has two strengths. First, we apply
+a bootstrapping approach to the input image, randomly
+dividing large-sized images into smaller fragments to minimize information loss. This enables more efficient data
+processing and analysis. Second, we systematically optimized the various steps in the image comparison process
+by carefully selecting and combining deep learning algorithms for image analysis, automatically extracting image
+features, converting these features into numerical vectors,
+and quantifying the similarity of the transformed vectors.
+
+F I G U R E 16 Graph of the principal component explained
+variance for Center for Statistics and Applications in Forensic
+Evidence and Computer Vision Lab test data represented as 50
+vectors when using Strategy A. The red line represents the
+cumulative explained variance, while the blue bars indicate the
+explained variance for each principal component.
+
+The approach we proposed is readily adaptable to different applications without significant constraints. For
+example, comparing similarity between two or more
+images is a problem that arises in the analysis of satellite
+and other remote-sensing images, the analysis of biological tissues and blood smears, the comparison of patterns
+across textile samples in the fashion industry, the implementation of biometric authentication systems, and investigations into copyright infringement within social media
+content, to name a few. In these diverse fields, images of
+interest may be very large, or very small, or be available in
+small numbers, situations in which standard deep learning methods may be less effective. The method we propose,
+with a modular structure and different choices for the components that make up each module is particularly well
+
+19321872, 2024, 1, Downloaded from https://onlinelibrary.wiley.com/doi/10.1002/sam.11660 by South Korea National Provision, Wiley Online Library on [19/02/2024]. See the Terms and Conditions (https://onlinelibrary.wiley.com/terms-and-conditions) on Wiley Online Library for rules of use; OA articles are governed by the applicable Creative Commons License
+
+KIM et al.
+
+suited for this type of nonstandard applications and can be
+effectively applied by following the protocols we describe.
+ACKNOWLEDGMENTS
+Kim and Park’s work was supported by the National
+Research Foundation of Korea (NRF) grant funded by the
+Korea government (MSIT) (No. 2021R1C1C100711111).
+Alicia Carriquiry’s work was partially funded by the
+Center for Statistics and Applications in Forensic
+Evidence (CSAFE) through cooperative Agreements
+70NANB15H176 and 70NANB20H019 between NIST
+and Iowa State University, which includes activities carried out at Carnegie Mellon University, Duke University,
+University of California Irvine, University of Virginia,
+West Virginia University, University of Pennsylvania,
+Swarthmore College, and University of Nebraska, Lincoln.
+Carriquiry is also partially funded by a Fellowship from
+the Hagler Institute for Advanced Studies at Texas A&M
+University.
+DATA AVAILABILITY STATEMENT
+The data that support the findings of this study are openly
+available in CSAFE HANDWRITING DATABASE at https:
+//data.csafe.iastate.edu/HandwritingDatabase/.
+REFERENCES
+1. S. Abney, “Bootstrapping,” Proceedings of the 40th annual meeting of the association for computational linguistics, Association for Computational Linguistics, Stroudsburg, Pennsylvania,
+2002, 360–367.
+2. Y. Baek, B. Lee, D. Han, S. Yun, and H. Lee, “Character
+region awareness for text detection,” Proceedings of the IEEE/CVF
+conference on computer vision and pattern recognition, IEEE,
+Piscataway, New Jersey, 2019, 9365–9374.
+3. N. Berry, J. Taylor, and F. Baez-Santiago. handwriter: Handwriting Analysis in R. R package version 1.0.1. URL 2021 https:/
+/CRAN.R-project.org/package=handwriter.
+4. L. Breiman, Random forests, Mach. Learn. 45 (2001), 5–32.
+5. M. Bulacu and L. Schomaker, Text-independent writer identification and verification using textural and allographic features, IEEE
+Trans. Pattern Anal. Mach. Intell. 29 (2007), no. 4, 701–717.
+6. M. Chauhan, M. A. Shaikh, and S. N. Srihari. Explanation based
+handwriting verification. arXiv Preprint arXiv:1909.02548. 2019.
+7. D. Chicco, Siamese neural networks: An overview, Artif. Neural
+Netw. (2021), 73–94.
+8. A. Crawford, A. Ray, and A. Carriquiry, A database of handwriting samples for applications in forensic statistics, Data Brief 28
+(2020), 105059.
+9. A. M. Crawford, N. S. Berry, and A. L. Carriquiry, A
+clustering method for graphical handwriting components and
+statistical writership analysis, Stat. Anal. Data Min. 14 (2021), no.
+1, 41–60.
+10. A. M. Crawford, D. M. Ommen, and A. L. Carriquiry, A
+rotation-based feature and bayesian hierarchical model for the
+forensic evaluation of handwriting evidence in a closed set, Ann.
+Appl. Stat. 17 (2023), no. 2, 1127–1151.
+
+KIM et al.
+
+11. A. Dosovitskiy, L. Beyer, A. Kolesnikov, D. Weissenborn, X. Zhai,
+T. Unterthiner, M. Dehghani, M. Minderer, G. Heigold, S. Gelly,
+J. Uszkoreit, and N. Houlsby. An image is worth 16 × 16 words:
+Transformers for image recognition at scale. arXiv Preprint
+arXiv:2010.11929. 2020.
+12. B. Efron, Nonparametric estimates of standard error: The jackknife, the bootstrap and other methods, Biometrika 68 (1981), no.
+3, 589–599.
+13. European Network of Forensic Science Institutes (ENFSI).
+Best Practice Manual for the Forensic Examination of Handwriting – Edition 04. Accessed November 21, 2023. URL 2022
+http://www.enfsi.eu/document/best-practice-manual-forensic
+-examination-handwriting-edition-04.
+14. S. Fiel and R. Sablatnig, “Writer identification and retrieval using
+a convolutional neural network,” Computer analysis of images
+and patterns: 16th international conference, CAIP 2015, Valletta,
+Malta, September 2–4, 2015, proceedings, part II 16, Springer,
+Berlin, Germany, 2015, 26–37.
+15. I. Goodfellow, Y. Bengio, and A. Courville, Deep learning,
+MIT Press, Cambridge, Massachusetts URL, 2016. http://www
+.deeplearningbook.org.
+16. T. Hastie, R. Tibshirani, and J. Friedman, The elements of statistical learning, 2nd ed., Springer, New York, 2009.
+17. K. He, X. Zhang, S. Ren, and J. Sun, Deep residual learning
+for image recognition, Proc. IEEE Conf. Comput. Vis. Pattern
+Recognit. (2016), 770–778.
+18. R. A. Hicklin, L. Eisenhart, N. Richetelli, M. D. Miller, P. Belcastro, T. M. Burkes, C. L. Parks, M. A. Smith, J. Buscaglia, E. M.
+Peters, R. S. Perlman, J. V. Abonamah, and B. A. Eckenrode,
+Accuracy and reliability of forensic handwriting comparisons,
+Proc. Natl. Acad. Sci. 119 (2022), no. 32, e2119944119.
+19. R. A. Huber and A. M. Headrick, Handwriting identification: Facts and fundamentals, CRC press, Boca Raton,
+Florida, 1999.
+20. M. Q. Johnson and D. M. Ommen, Handwriting identification
+using random forests and score-based likelihood ratios, Stat. Anal.
+Data Min. 15 (2022), no. 3, 357–375.
+21. F. Kleber, S. Fiel, M. Diem, and R. Sablatnig, “Cvldatabase: An off-line database for writer retrieval, writer identification and word spotting,” 2013 12th international conference on
+document analysis and recognition, IEEE, New York City, 2013,
+560–564.
+22. A. Lim and D. Ommen. Handwriting analysis. Proceedings
+of the 106th International Association for Identification (IAI)
+Annual Educational Conference, 1. 2022.
+23. M. Marcinowski, Top interpretable neural network for hand
+writing identification, J. Forensic Sci. 67 (2022), no. 3, 1140–1148.
+24. L. McInnes, J. Healy, and J. Melville. Umap: Uniform manifold
+approximation and projection for dimension reduction. arXiv
+Preprint arXiv:1802.03426, 3. 2018.
+25. National Research Council Committee on Identifying the Needs
+of the Forensic Sciences Community, Strengthening forensic
+science in the United States: A path forward, The National
+Academies Press, Washington, DC, USA. URL, 2009. https:/
+/www.nap.edu/catalog/12589/strengthening-forensic-science
+-in-the-united-states-a-path-forward.
+26. European Network of Forensic Science Institutes. The european network of forensic science institutes (enfsi). Online,
+Accessed November 21, 2023. URL 2023 http://www.enfsi.eu
+/about-enfsi.
+
+19321872, 2024, 1, Downloaded from https://onlinelibrary.wiley.com/doi/10.1002/sam.11660 by South Korea National Provision, Wiley Online Library on [19/02/2024]. See the Terms and Conditions (https://onlinelibrary.wiley.com/terms-and-conditions) on Wiley Online Library for rules of use; OA articles are governed by the applicable Creative Commons License
+
+18 of 19
+
+27. O. Russakovsky, J. Deng, H. Su, J. Krause, S. Satheesh, S. Ma,
+Z. Huang, A. Karpathy, A. Khosla, M. Bernstein, A. C. Berg, and
+L. Fei-Fei, Imagenet large scale visual recognition challenge, Int.
+J. Comput. Vis. 115 (2015), 211–252.
+28. F. Sabry, Optical character recognition: Fundamentals and applications, One Billion Knowledgeable, London, United Kingdom,
+2023.
+29. J. Sita, B. Found, and D. K. Rogers, Forensic handwriting examiners’ expertise for signature comparison, J. Forensic Sci. 47 (2002),
+no. 5, 1117–1124.
+30. H. Srinivasan, S. N. Srihari, and M. J. Beal, “Machine learning
+for signature verification,” Computer vision, graphics and image
+processing: 5th Indian conference, ICVGIP 2006, Madurai, India,
+December 13–16, 2006. Proceedings, Springer, Berlin, Germany,
+2006, 761–775.
+31. N. Srivastava, G. Hinton, A. Krizhevsky, I. Sutskever, and
+R. Salakhutdinov, Dropout: A simple way to prevent neural
+networks from overfitting, J. Mach. Learn. Res. 15 (2014), no. 1,
+1929–1958.
+
+19 of 19
+
+32. M. Tan and Q. Le, “Efficientnet: Rethinking model
+scaling for convolutional neural networks,” International
+conference on machine learning, PMLR, New York City, 2019,
+6105–6114.
+33. L. van der Maaten and G. Hinton, Visualizing data using t-sne,
+J. Mach. Learn. Res. 9 (2008), no. 11, 2579-2605.
+34. A. Vaswani, N. Shazeer, N. Parmar, J. Uszkoreit, L. Jones, A. N.
+Gomez, Ł. Kaiser, and I. Polosukhin, Attention is all you need,
+Adv. Neural Inf. Proces. Syst. 30 (2017), 6000–6010.
+
+How to cite this article: J. Kim, S. Park, and
+A. Carriquiry, A deep learning approach for the
+comparison of handwritten documents using latent
+feature vectors, Stat. Anal. Data Min.: ASA Data Sci.
+J. 17 (2024), e11660. https://doi.org/10.1002/sam
+.11660
+
+19321872, 2024, 1, Downloaded from https://onlinelibrary.wiley.com/doi/10.1002/sam.11660 by South Korea National Provision, Wiley Online Library on [19/02/2024]. See the Terms and Conditions (https://onlinelibrary.wiley.com/terms-and-conditions) on Wiley Online Library for rules of use; OA articles are governed by the applicable Creative Commons License
+
+KIM et al.
+
+
