@@ -1,361 +1,299 @@
-아래는 **baseline 코드**를 그대로 재사용하면서, 두 개의 실험 파일을 **정확한 구조**로 설계한안입니다.
-
-* 파일명:
-
-  * `experiments/arcface/agent/stage3_transformer_mil.ipynb` (또는 `.py`)
-  * `experiments/arcface/agent/stage3_transmil.ipynb` (또는 `.py`)
-* 핵심 원칙: **데이터 로딩/학습·평가 루프/손실/임계값 탐색**은 baseline을 최대한 재사용하고, **모델 정의 부분만 교체**합니다. 두 모델 모두 **입력/출력 인터페이스를 baseline(AttentionMIL)과 동일**하게 맞춰 `forward`에서 `(logits, weights)`를 반환하여 나머지 파이프라인 수정이 거의 없도록 합니다.
+아래 코드는 **형식상** 큰 문제 없이 돌아갈 가능성이 높지만, “TransMIL”의 핵심 아이디어와 현재 데이터 특성(슬라이딩 윈도우로 얻은 **1D 순차 토큰**, 시퀀스 길이가 매우 **짧음**(N≈10\~20))을 감안하면 설계상 치명적/중대 이슈가 몇 가지 있습니다. 이 이슈들은 학습 안정성과 성능에 직접적인 악영향을 줄 수 있습니다. 우선 **결론**부터 정리하고, 이어서 **이슈 상세 → 수정 제안(즉시 적용 가능한 패치 코드)** 순으로 드리겠습니다.
 
 ---
 
-## 0) 공통: 파일의 상단 섹션 구성
+## 한 줄 결론(요약)
 
-두 실험 파일 모두 다음 순서를 **baseline과 동일하게 유지**합니다.
-
-1. **환경 설정 & 시드 고정** (baseline 그대로)
-2. **Stage2 Bag 로드 & Instance 평균 계산** (baseline 그대로)
-3. **Dataset/DataLoader** (baseline 그대로)
-4. **손실/옵티마이저/스케줄러** (baseline 그대로, 단 최종 Weighted BCE도 동일)
-5. **학습/평가 함수(train\_one\_epoch/evaluate/train\_model)** (baseline 그대로)
-6. **최종 파이프라인(Weighted BCE + Val 기반 임계값 최적화 + Test 보고)** (baseline 그대로)
-7. **단, “모델 정의” 블록만 TransformerMIL / TransMIL로 교체**
-
-> 즉, 아래 **모델 블록**만 각 파일에 붙여 넣으면 됩니다.
+1. **Nyström Attention의 `num_landmarks`가 토큰 수와 무관하게 `embed_dim//2=256`으로 고정**되어 있어, 현재처럼 시퀀스 길이가 16\~20개인 상황에서는 **형태 불일치/비효율/오류 위험**이 큽니다.
+2. **PPEG(2D depthwise conv) + 정사각 패딩**은 WSI(슬라이드 이미지)용 TransMIL 가정(2D 공간 토큰)에 맞춘 것이며, **1D 순차 토큰**인 현재 데이터에는 **부적합**합니다.
+3. 현재 `TransLayer`는 **FFN(Feed-Forward Network) 블록이 빠져** 표준 Transformer 블록과 다르고, 표현력이 제한됩니다.
+4. “**FP 가중치**”라고 이름 붙인 손실이 실제로는 \*\*음성 클래스 전체(0 레이블)\*\*에 가중치를 곱하는 형태라서 **TN까지 함께 증벌**되고 있습니다(“FP만”을 직접 가중하는 것은 BCE 특성상 불가).
+5. 사소하지만, **시퀀스가 짧은데 Nyström을 쓰는 이점이 거의 없고** 오히려 수치/구현 복잡성만 높습니다. **표준 MultiheadAttention**이 더 간단하고 안정적입니다.
 
 ---
 
-## 1) stage3\_transformer\_mil: **Transformer-based MIL(범주형)**
+## 이슈 상세 진단
 
-### 1-1. 설계 포인트
+### \[BLOCKER] Nyström `num_landmarks` 설정
 
-* **입력**: `x`는 `[B, N, D]` (B=batch, N=instance 개수=10, D=256)
-* **전처리**: `Linear(256→d_model)`로 투영 + **Positional Encoding (sinusoidal 또는 learned)**
-* **코어**: `nn.TransformerEncoder`(L개 레이어, H개 헤드)로 **인스턴스 간 상호작용** 학습
-* **집계(Aggregation)**: **Attention Pooling 헤드**(trainable query)로 bag 표현 `z_bag` 생성
-* **출력**: `logits = Linear(z_bag → 1)` + **인스턴스 중요도 `weights`**(해석용) 반환
-* **인터페이스**: `forward -> (logits, weights)`  (baseline과 동일)
+* 코드:
 
-### 1-2. 모델 코드 블록 (이 블록만 붙여넣어 교체)
+  ```python
+  self.attn = NystromAttention(
+      dim=dim,
+      dim_head=dim // num_heads,
+      heads=num_heads,
+      num_landmarks=max(dim // 2, 1),  # ← embed_dim(=512)의 절반 = 256
+      ...
+  )
+  ```
+* 현재 한 배치의 총 토큰 수는 \*\*CLS 1 + 인스턴스 N(\~10 → 패딩 16)\*\*로 약 **17**개입니다. 그런데 `num_landmarks=256`은 **시퀀스 길이보다 훨씬 큼**.
+
+  * 구현체에 따라 **에러**가 나거나, 내부에서 억지로 처리되더라도 **계산이 비정상/비효율**적일 수 있습니다.
+* **권장:** `num_landmarks ≤ seq_len`이 되도록 작게(예: 8\~16) 고정하거나, 아예 **표준 MultiheadAttention**으로 교체.
+
+---
+
+### \[HIGH] 2D PPEG + 정사각 패딩의 부적합성
+
+* 현재 토큰은 \*\*문서 내 1차원 순서(윈도우 시퀀스)\*\*입니다. TransMIL의 PPEG는 **(H×W) 토큰의 2D 근접성**을 가정합니다.
+* 정사각형으로 **6개 패딩**하고 2D conv를 적용하면, **존재하지 않는 이웃 관계**가 생겨 **의미 왜곡**이 발생합니다.
+* **권장:** (a) \*\*1D PPEG(Conv1d depthwise)\*\*로 바꾸거나, (b) PPEG를 빼고 \*\*표준 1D 위치임베딩(learnable 또는 sinusoidal)\*\*을 쓰세요.
+
+---
+
+### \[HIGH] Transformer 블록의 불완전성(FFN 없음)
+
+* 표준 Transformer(또는 ViT) 블록은 \*\*(Norm→Self-Attn→Residual) + (Norm→FFN→Residual)\*\*의 **두 개 서브블록**을 갖습니다.
+* 현재 `TransLayer`는 **어텐션 + 잔차**만 있고 **FFN이 없습니다.** 표현력이 줄고 수렴이 느려질 수 있습니다.
+
+---
+
+### \[MEDIUM] “FP 가중 BCE”의 의미 착오
+
+* 구현된 `WeightedBCE`는 **음성 클래스(0 레이블)** 샘플 전체에 가중(=TN/FP 모두)에 곱합니다.
+* \*\*진짜 ‘FP만’\*\*에만 가중치를 다는 것은 **사후적으로 오차를 아는** 경우라 불가능합니다. 일반적으로는 \*\*클래스 가중(neg\_weight/pos\_weight)\*\*으로 간접적으로 **FP 억제** 효과를 냅니다.
+* **권장:** 이름을 **ClassWeightedBCE**로 바꾸고, `neg_weight > pos_weight` 형태의 **클래스 가중**을 명시적으로 적용.
+
+---
+
+### \[MEDIUM] 평균 풀링으로 윈도우 내부(5개 단어) 정보를 소실
+
+* `(10,5,256) → (10,256)` 평균은 단순하고 깔끔하지만 **획/간격/기울기 변동성** 같은 미세 신호를 잃습니다.
+* **권장:** 간단히 **Conv1d(커널=5)**, **GRU/LSTM**, **작은 Transformer**로 5-토큰을 **instance-level encoder**로 통과시킨 후 bag-level Transformer에 올리면 종종 성능이 좋아집니다.
+
+---
+
+## “최소 변경” 실전 패치 (권장)
+
+아래 패치는 **코드를 크게 바꾸지 않으면서** 위 세 가지 핵심 문제(landmarks, 2D PPEG, FFN 부재)를 해결합니다.
+
+### 1) 표준 Transformer 블록으로 교체(+FFN 포함)
 
 ```python
-# =========================
-# Models: PosEnc & TransformerMIL
-# =========================
-import math
-
-class SinusoidalPositionalEncoding(nn.Module):
-    def __init__(self, d_model: int, max_len: int = 512, dropout_p: float = 0.1):
+class TransBlock(nn.Module):
+    def __init__(self, dim=512, num_heads=8, dropout_p=0.1, ffn_mult=4):
         super().__init__()
-        self.dropout = nn.Dropout(dropout_p)
-        pe = torch.zeros(max_len, d_model)  # [max_len, d_model]
-        position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
-        div_term = torch.exp(torch.arange(0, d_model, 2).float() * (-math.log(10000.0) / d_model))
-        pe[:, 0::2]  = torch.sin(position * div_term)
-        pe[:, 1::2]  = torch.cos(position * div_term)
-        self.register_buffer('pe', pe)  # not a parameter
-
-    def forward(self, x: torch.Tensor):
-        """
-        x: [B, N, d_model]
-        """
-        B, N, D = x.size()
-        x = x + self.pe[:N].unsqueeze(0)  # [1, N, D] broadcast
-        return self.dropout(x)
-
-class AttentionPooler(nn.Module):
-    """
-    ABMIL 스타일의 소프트 어텐션 풀러.
-    입력 [B, N, d_model] -> 가중합 [B, d_model] + weights [B, N]
-    """
-    def __init__(self, d_model: int, hidden: int = 128, dropout_p: float = 0.1):
-        super().__init__()
-        self.fc1 = nn.Linear(d_model, hidden)
-        self.fc2 = nn.Linear(hidden, 1)
-        self.drop = nn.Dropout(dropout_p)
-        nn.init.xavier_uniform_(self.fc1.weight); nn.init.zeros_(self.fc1.bias)
-        nn.init.xavier_uniform_(self.fc2.weight); nn.init.zeros_(self.fc2.bias)
-
-    def forward(self, H):  # H: [B, N, d_model]
-        A = torch.tanh(self.fc1(self.drop(H)))   # [B, N, hidden]
-        A = self.fc2(A).squeeze(-1)              # [B, N]
-        weights = torch.softmax(A, dim=1)        # [B, N]
-        Z = torch.sum(weights.unsqueeze(-1) * H, dim=1)  # [B, d_model]
-        return Z, weights
-
-class TransformerMIL(nn.Module):
-    """
-    Transformer 기반 MIL (범주) - 인스턴스 간 self-attention + attention pooling 집계.
-    forward: (logits, weights) 반환 -> baseline 학습 루프와 호환.
-    """
-    def __init__(
-        self,
-        input_dim=256,      # ArcFace 임베딩 차원
-        d_model=128,
-        nhead=4,
-        num_layers=2,
-        dim_feedforward=256,
-        dropout_p=0.1,
-        pos_enc='sin'      # 'sin' or 'learned'
-    ):
-        super().__init__()
-        self.proj = nn.Linear(input_dim, d_model)
-        if pos_enc == 'sin':
-            self.posenc = SinusoidalPositionalEncoding(d_model, max_len=128, dropout_p=dropout_p)
-        else:
-            self.pos_embedding = nn.Embedding(128, d_model)  # N<=128 가정
-            nn.init.normal_(self.pos_embedding.weight, std=0.02)
-            self.posenc = None
-
-        enc_layer = nn.TransformerEncoderLayer(
-            d_model=d_model, nhead=nhead, dim_feedforward=dim_feedforward,
-            dropout=dropout_p, batch_first=True, norm_first=True
+        self.norm1 = nn.LayerNorm(dim)
+        self.attn  = nn.MultiheadAttention(
+            embed_dim=dim, num_heads=num_heads, dropout=dropout_p, batch_first=True
         )
-        self.encoder = nn.TransformerEncoder(enc_layer, num_layers=num_layers)
-        self.pooler  = AttentionPooler(d_model, hidden=128, dropout_p=dropout_p)
-        self.classifier = nn.Linear(d_model, 1)
+        self.norm2 = nn.LayerNorm(dim)
+        self.ffn   = nn.Sequential(
+            nn.Linear(dim, ffn_mult * dim),
+            nn.GELU(),                 # ViT 계열은 GELU가 보편적
+            nn.Dropout(dropout_p),
+            nn.Linear(ffn_mult * dim, dim),
+            nn.Dropout(dropout_p),
+        )
+    def forward(self, x):
+        # Pre-norm
+        a = self.attn(self.norm1(x), self.norm1(x), self.norm1(x), need_weights=False)[0]
+        x = x + a
+        f = self.ffn(self.norm2(x))
+        x = x + f
+        return x
+```
 
-        # init
-        nn.init.xavier_uniform_(self.proj.weight); nn.init.zeros_(self.proj.bias)
-        nn.init.xavier_uniform_(self.classifier.weight); nn.init.zeros_(self.classifier.bias)
+> **왜 MultiheadAttention?** 현재 시퀀스 길이가 10\~20 수준이라 Nyström의 장점이 없고, 표준 MHA가 **더 안정적**입니다. (Nyström을 꼭 쓰고 싶다면 `num_landmarks=8~16` **고정값**으로 작게 두고, 위 블록에서 `attn`만 Nyström으로 바꾸세요.)
+
+---
+
+### 2) 1D PPEG(또는 간단한 Learnable 1D Positional Embedding)
+
+**옵션 A — 1D PPEG (depthwise Conv1d 3/5/7)**
+
+```python
+class PPEG1D(nn.Module):
+    def __init__(self, dim=512):
+        super().__init__()
+        self.proj7 = nn.Conv1d(dim, dim, kernel_size=7, padding=3, groups=dim)
+        self.proj5 = nn.Conv1d(dim, dim, kernel_size=5, padding=2, groups=dim)
+        self.proj3 = nn.Conv1d(dim, dim, kernel_size=3, padding=1, groups=dim)
 
     def forward(self, x):
-        """
-        x: [B, N, D]
-        returns: logits[B], weights[B,N]
-        """
-        B, N, D = x.shape
-        h = self.proj(x)  # [B, N, d_model]
-        if self.posenc is not None:
-            h = self.posenc(h)     # sinusoidal
-        else:
-            idx = torch.arange(N, device=h.device).unsqueeze(0).repeat(B,1)
-            h = h + self.pos_embedding(idx)
-
-        h = self.encoder(h)        # [B, N, d_model]
-        z_bag, weights = self.pooler(h)   # [B, d_model], [B, N]
-        logits = self.classifier(z_bag).squeeze(-1)  # [B]
-        return logits, weights
+        # x: (B, 1+N, C) = [CLS | tokens]
+        cls_token, feat_token = x[:, :1], x[:, 1:]      # (B,1,C), (B,N,C)
+        b, n, c = feat_token.shape
+        feat = feat_token.transpose(1, 2)               # (B,C,N)
+        feat = self.proj7(feat) + self.proj5(feat) + self.proj3(feat) + feat
+        feat = feat.transpose(1, 2)                     # (B,N,C)
+        return torch.cat([cls_token, feat], dim=1)      # (B,1+N,C)
 ```
 
-### 1-3. 이 파일의 “모델 인스턴스” 교체 부분
+**옵션 B — 단순 학습형 1D 위치임베딩(추천: 가장 간단/안정)**
 
 ```python
-# --- 기존 ---
-# mil_model = AttentionMIL(input_dim=256, hidden_dim=128, dropout_p=0.1).to(device)
-
-# --- 교체 (TransformerMIL 실험용) ---
-mil_model = TransformerMIL(
-    input_dim=256, d_model=128, nhead=4, num_layers=2,
-    dim_feedforward=256, dropout_p=0.1, pos_enc='sin'
-).to(device)
+class LearnablePosEmb1D(nn.Module):
+    def __init__(self, max_len=512, dim=512):
+        super().__init__()
+        self.pos = nn.Parameter(torch.zeros(1, max_len, dim))
+        nn.init.trunc_normal_(self.pos, std=0.02)
+    def forward(self, x):
+        # x: (B, 1+N, C)
+        return x + self.pos[:, :x.size(1), :]
 ```
-
-> 나머지 손실/학습/평가/임계값 탐색/ROC 등은 baseline과 동일하게 실행됩니다.
 
 ---
 
-## 2) stage3\_transmil: **TransMIL(특정 모델)**
-
-### 2-1. 설계 포인트
-
-* **핵심 차이**: **\[CLS] 토큰을 추가**하여 bag의 대표 토큰으로 사용하고, **self-attention**으로 인스턴스-인스턴스 관계를 학습.
-* **bag 표현**: 마지막 인코더 출력의 **CLS 토큰 임베딩을 bag 표현**으로 사용.
-* **해석성(weights)**: 마지막 레이어의 **CLS → tokens** 어텐션 맵을 **인스턴스 중요도**로 사용(헤드 평균).
-* **인터페이스**: `forward -> (logits, weights)` (weights는 CLS가 본 인스턴스별 주의도)
-
-### 2-2. 모델 코드 블록
+### 3) TransMIL 본체 교체(정사각 패딩 제거, 1D 흐름 유지)
 
 ```python
-# =========================
-# Model: TransMIL (CLS token + self-attn, attn map 반환)
-# =========================
-class TransformerEncoderLayerWithAttn(nn.Module):
-    """
-    표준 TransformerEncoderLayer를 커스텀하여
-    마지막 self-attention의 attention weight를 반환할 수 있도록 구현.
-    """
-    def __init__(self, d_model, nhead, dim_feedforward=256, dropout=0.1):
-        super().__init__()
-        self.self_attn = nn.MultiheadAttention(d_model, nhead, dropout=dropout, batch_first=True)
-        self.linear1 = nn.Linear(d_model, dim_feedforward)
-        self.dropout = nn.Dropout(dropout)
-        self.linear2 = nn.Linear(dim_feedforward, d_model)
-        self.norm1 = nn.LayerNorm(d_model)
-        self.norm2 = nn.LayerNorm(d_model)
-        self.dropout1 = nn.Dropout(dropout)
-        self.dropout2 = nn.Dropout(dropout)
-        self.activation = nn.GELU()
-
-        # init
-        for m in [self.linear1, self.linear2]:
-            nn.init.xavier_uniform_(m.weight); nn.init.zeros_(m.bias)
-
-    def forward(self, src, attn_mask=None, key_padding_mask=None, need_attn=False):
-        """
-        src: [B, T, d_model]  (T = N + 1, CLS 포함)
-        returns: out, last_attn (if need_attn)
-        """
-        # Self-attention
-        attn_out, attn_weights = self.self_attn(
-            src, src, src,
-            attn_mask=attn_mask, key_padding_mask=key_padding_mask,
-            need_weights=True, average_attn_weights=True  # 평균된 헤드 가중치 반환 [B, T, T]
-        )
-        src2 = self.dropout1(attn_out)
-        src  = self.norm1(src + src2)
-
-        # FFN
-        ff = self.linear2(self.dropout(self.activation(self.linear1(src))))
-        src2 = self.dropout2(ff)
-        out  = self.norm2(src + src2)
-
-        if need_attn:
-            return out, attn_weights  # [B, T, T]
-        else:
-            return out, None
-
 class TransMIL(nn.Module):
-    """
-    TransMIL 스타일: [CLS] 토큰 + self-attention 인코더, CLS 임베딩으로 bag 분류.
-    weights: 마지막 레이어의 CLS→tokens attention을 반환 (해석성).
-    """
-    def __init__(
-        self,
-        input_dim=256,
-        d_model=128,
-        nhead=4,
-        num_layers=2,
-        dim_feedforward=256,
-        dropout_p=0.1,
-        pos_enc='sin'  # 'sin' or 'learned'
-    ):
+    def __init__(self, input_dim=256, embed_dim=512, num_heads=8, dropout_p=0.1, n_classes=1,
+                 use_1d_ppeg=True, max_len=512):
         super().__init__()
-        self.proj = nn.Linear(input_dim, d_model)
-        if pos_enc == 'sin':
-            self.posenc = SinusoidalPositionalEncoding(d_model, max_len=128, dropout_p=dropout_p)
-            self.pos_embedding = None
+        assert embed_dim % num_heads == 0
+
+        self.embed = nn.Sequential(
+            nn.Linear(input_dim, embed_dim),
+            nn.GELU(),                # ReLU → GELU 권장
+            nn.Dropout(dropout_p),
+        )
+        self.cls_token = nn.Parameter(torch.randn(1, 1, embed_dim) * 0.02)
+
+        # 두 개의 Transformer 블록
+        self.block1 = TransBlock(embed_dim, num_heads, dropout_p)
+        self.block2 = TransBlock(embed_dim, num_heads, dropout_p)
+
+        # 위치 부여: 1D PPEG 또는 learnable pos emb
+        if use_1d_ppeg:
+            self.pos_layer = PPEG1D(embed_dim)
+            self.use_learnable_pos = False
         else:
-            self.posenc = None
-            self.pos_embedding = nn.Embedding(128, d_model)
-            nn.init.normal_(self.pos_embedding.weight, std=0.02)
+            self.pos_layer = LearnablePosEmb1D(max_len=max_len, dim=embed_dim)
+            self.use_learnable_pos = True
 
-        # CLS 토큰 (learnable)
-        self.cls_token = nn.Parameter(torch.zeros(1, 1, d_model))
-        nn.init.normal_(self.cls_token, std=0.02)
+        self.norm = nn.LayerNorm(embed_dim)
+        self.classifier = nn.Linear(embed_dim, n_classes)
+        self._init_weights()
 
-        self.layers = nn.ModuleList([
-            TransformerEncoderLayerWithAttn(d_model, nhead, dim_feedforward, dropout_p)
-            for _ in range(num_layers)
-        ])
-        self.norm = nn.LayerNorm(d_model)
-        self.classifier = nn.Linear(d_model, 1)
-
-        nn.init.xavier_uniform_(self.proj.weight); nn.init.zeros_(self.proj.bias)
-        nn.init.xavier_uniform_(self.classifier.weight); nn.init.zeros_(self.classifier.bias)
+    def _init_weights(self):
+        for m in self.modules():
+            if isinstance(m, nn.Linear):
+                nn.init.xavier_uniform_(m.weight); nn.init.zeros_(m.bias)
+            if isinstance(m, (nn.Conv1d, nn.Conv2d)):
+                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+                if m.bias is not None: nn.init.zeros_(m.bias)
 
     def forward(self, x):
         """
-        x: [B, N, D]
-        returns: logits[B], weights[B, N]  (weights는 CLS가 본 tokens 주의도)
+        x: (B, N, D_in)  # N = 인스턴스 수 (정사각 패딩 없음)
         """
-        B, N, D = x.size()
-        h = self.proj(x)  # [B, N, d_model]
-        if self.posenc is not None:
-            h = self.posenc(h)
+        assert x.dim() == 3, 'Input must be (batch, instances, features).'
+        h = self.embed(x)                          # (B,N,C)
+        b, n, c = h.shape
+        cls = self.cls_token.expand(b, 1, c)       # (B,1,C)
+        h = torch.cat([cls, h], dim=1)             # (B,1+N,C)
+
+        # 위치부여
+        if self.use_learnable_pos:
+            h = self.pos_layer(h)                  # learnable pos emb
         else:
-            idx = torch.arange(N, device=h.device).unsqueeze(0).repeat(B,1)
-            h = h + self.pos_embedding(idx)
+            h = self.block1(h)                     # Pre-attn로 약간 섞은 뒤
+            h = self.pos_layer(h)                  # 1D PPEG
+            h = self.block2(h)
+            h = self.norm(h)
+            cls_out = h[:, 0]                      # (B,C)
+            logits = self.classifier(cls_out)      # (B,1)
+            return logits.squeeze(-1)
 
-        # prepend CLS
-        cls_tok = self.cls_token.expand(B, -1, -1)     # [B,1,d_model]
-        h = torch.cat([cls_tok, h], dim=1)             # [B, N+1, d_model]
-
-        attn_map_last = None
-        out = h
-        for li, layer in enumerate(self.layers):
-            # 마지막 레이어에서 attn map을 추출
-            need_attn = (li == len(self.layers) - 1)
-            out, attn_map = layer(out, need_attn=need_attn)
-            if need_attn:
-                attn_map_last = attn_map  # [B, T, T], T=N+1
-
-        out = self.norm(out)                 # [B, N+1, d_model]
-        cls_out = out[:, 0, :]               # [B, d_model]
-        logits = self.classifier(cls_out).squeeze(-1)
-
-        # 해석: CLS -> tokens attention을 weights로 사용 (CLS=0번째, tokens=1..N)
-        if attn_map_last is not None:
-            # attn_map_last: [B, T, T], (query idx, key idx)
-            weights = attn_map_last[:, 0, 1:]    # [B, N]
-            weights = torch.softmax(weights, dim=1)
-        else:
-            # fallback: uniform
-            weights = torch.full((B, N), 1.0 / N, device=x.device)
-
-        return logits, weights
+        # learnable pos emb를 사용할 경우:
+        h = self.block1(h)
+        h = self.block2(h)
+        h = self.norm(h)
+        cls_out = h[:, 0]
+        logits = self.classifier(cls_out)
+        return logits.squeeze(-1)
 ```
 
-### 2-3. 이 파일의 “모델 인스턴스” 교체 부분
+> 위 구현은 **정사각 패딩을 완전히 제거**하고, **1D 순서**를 유지합니다. 또한 **FFN 포함 블록**을 사용하고, 위치 부여도 1D로 맞췄습니다.
+> (현 코드와의 변경폭을 최소화하려면 `TransLayer` → `TransBlock` 교체, padding 제거, `PPEG1D`만 넣는 방향이 가장 깔끔합니다.)
+
+---
+
+### 4) 손실함수: 이름과 의미를 명확히 (클래스 가중)
 
 ```python
-# --- 기존 ---
-# mil_model = AttentionMIL(input_dim=256, hidden_dim=128, dropout_p=0.1).to(device)
+import torch.nn.functional as F
 
-# --- 교체 (TransMIL 실험용) ---
-mil_model = TransMIL(
-    input_dim=256, d_model=128, nhead=4, num_layers=2,
-    dim_feedforward=256, dropout_p=0.1, pos_enc='sin'
-).to(device)
+class ClassWeightedBCE(nn.Module):
+    def __init__(self, pos_weight=1.0, neg_weight=1.0):
+        super().__init__()
+        self.pos_weight = pos_weight
+        self.neg_weight = neg_weight
+    def forward(self, logits, labels):
+        # labels: {0,1} float tensor
+        weights = labels * self.pos_weight + (1.0 - labels) * self.neg_weight
+        return F.binary_cross_entropy_with_logits(logits, labels, weight=weights, reduction='mean')
+
+# 예: FP 억제를 원하면 음성(0) 클래스 가중을 더 크게
+criterion = ClassWeightedBCE(pos_weight=1.0, neg_weight=2.0)
 ```
 
-> 마찬가지로 나머지 파이프라인은 baseline 그대로 사용합니다.
+> 주의: \*\*“FP만”\*\*을 따로 가중하는 것은 불가능합니다(예측 결과를 모르면 FP인지 TN인지 알 수 없으므로). 대신 음성 클래스 손실을 더 키워 **간접적으로 FP를 줄이는** 효과를 노립니다.
 
 ---
 
-## 3) 하이퍼파라미터 & 실행 팁
+## 그 외 권장 사항(성능·안정성 개선)
 
-* **공통 권장값**: `d_model=128`, `nhead=4`, `num_layers=2`, `dim_ff=256`, `dropout=0.1`
-* **배치/시드/에포크/스케줄러**: baseline 동일 (batch=16, epoch=10, patience=3…)
-* **Positional Encoding**:
-
-  * 기본은 `sinusoidal` 추천(길이 변화에 안정적).
-  * 인덱스가 사실상 “문서 내 윈도우 순서”를 의미하므로 **learned embedding**으로도 OK.
-* **해석성**:
-
-  * `TransformerMIL` → `AttentionPooler`의 `weights`가 인스턴스 중요도.
-  * `TransMIL` → **마지막 레이어의 CLS→tokens attention**이 중요도.
-* **변형 실험(옵션)**:
-
-  * `TransformerMIL`의 풀러를 **Top‑k pooling**으로 바꾸어 희소 양성에 대한 민감도 비교.
-  * `TransMIL`에 **CLS + AttentionPooling 병렬 결합**(concat) 후 classifier에 투입 (DSMIL과 유사한 듀얼집계).
+* **AdamW + weight decay**:
+  `optimizer = torch.optim.AdamW(model.parameters(), lr=3e-4, weight_decay=1e-2)`
+  (현재 1e-3은 약간 큼. Dropout 0.1\~0.2, GELU 조합과 잘 맞습니다.)
+* **시퀀스가 매우 짧으므로** Nyström 이점 X → 표준 MHA 권장.
+  (정 꼭 쓰려면 `num_landmarks=8` 같은 **작은 상수**로.)
+* **윈도우 평균 대신 경량 인코더**: `(5,256)` → Conv1d(kernel=3\~5) or 작은 GRU로 요약 후 bag-level에 투입.
+* **Threshold 최적화**는 현재처럼 **검증 세트에서 F1 기준**으로 찾되, **테스트에는 그 임계값을 고정**해 사용(현재도 그렇게 하고 있습니다 👍).
+* **지표 표준화**: AUC는 확률 기반, F1은 임계값 기반입니다. 보고 시 두 축을 분리해 해석(“확률 분리력 vs. 의사결정 성능”).
+* **재현성**: 이미 시드/Deterministic 설정이 있으나, \*\*DataLoader의 `num_workers>0`\*\*를 쓰면 완전 결정적이지 않을 수 있습니다. 논문 보고용이면 `num_workers=0` 확인.
 
 ---
 
-## 4) 저장/로그 네이밍(혼동 방지)
+## 빠른 점검 체크리스트
 
-* 모델 가중치:
-
-  * `best_transformer_mil.pth`, `best_transmil.pth`
-* 결과 JSON/CSV:
-
-  * `stage3_transformer_mil_results.json`, `stage3_transmil_results.json`
-* 실험 태그(콘솔/ WandB 등):
-
-  * `tmil_d128_h4_L2_ff256_drop01_sin`
-  * `transmil_cls_d128_h4_L2_ff256_drop01_sin`
+* [ ] `TransLayer` → **FFN 포함 블록**으로 교체
+* [ ] **정사각 패딩 제거**, PPEG를 **1D**로 적용 (또는 learnable 1D pos)
+* [ ] **Nyström landmarks**를 작은 상수로 제한하거나 **MHA로 교체**
+* [ ] 손실 함수 이름/의미 **ClassWeightedBCE**로 정정, `neg_weight`로 FP 간접 억제
+* [ ] (선택) 윈도우 내부 5토큰 **경량 인코더**로 요약 후 bag-level로 입력
 
 ---
 
-## 5) 체크리스트(짧게)
+## “정말 최소 수정만” 원하시면
 
-* [ ] baseline과 **동일 입출력 인터페이스** 유지(`(logits, weights)` 반환)
-* [ ] Positional Encoding 적용(둘 중 하나)
-* [ ] `nn.TransformerEncoder`(TMIL) vs `CLS+custom attn`(TransMIL) 구분 적용
-* [ ] Weighted BCE/임계값 검색/ROC·F1 보고 **그대로 재사용**
-* [ ] 저장/로그 이름 분리
+아래 2줄만 바꿔도 **즉각적인 오류/비효율 리스크**는 크게 줄어듭니다.
+
+1. Nyström landmarks만 축소
+
+```python
+self.attn = NystromAttention(
+    dim=dim, dim_head=dim // num_heads, heads=num_heads,
+    num_landmarks=8,   # ← 256 → 8 (또는 16)
+    pinv_iterations=6, residual=True, dropout=dropout_p
+)
+```
+
+2. 정사각 패딩 없이 1D로 PPEG 적용
+   (패딩 블록을 제거하고, `self.pos_layer(h, 1, n)`으로 호출)
+
+```python
+h = self.embed(x)                      # (B,N,C)
+b, n, _ = h.shape
+cls_tokens = self.cls_token.expand(b, 1, -1).to(h.device)
+h = torch.cat([cls_tokens, h], dim=1)  # (B,1+N,C)
+
+h = self.layer1(h)
+h = self.pos_layer(h, 1, n)            # ★ side,side → 1,n
+h = self.layer2(h)
+```
+
+> 이때 `PPEG.forward` 안의 `height,width` 곱이 `tokens`와 일치해야 하므로, **패딩 로직을 함께 지워야** 합니다.
 
 ---
 
-### 자기점검(1–2문장)
+## 마무리
 
-* 두 실험 파일은 baseline 학습 루프와 완전 호환되도록 **동일한 forward 시그니처**를 유지하므로, 교체만으로 바로 실행 가능합니다. 다만 `TransMIL`의 **attention 가중치 추출**은 마지막 레이어의 self-attention에 의존하므로, 레이어 수 변경 시에도 **CLS→tokens 맵**을 올바르게 가져오는지(차원 `[B, T, T]`)를 확인하세요.
+* \*\*구조적 일관성(입·출력 차원, 학습/검증 파이프라인)\*\*은 잘 짜셨습니다.
+* 다만 **TransMIL의 2D 가정**을 **1D 시퀀스**에 억지로 맞추는 부분(정사각 패딩+2D PPEG)과 **Nyström 설정**이 현재 데이터 특성과 맞지 않아 **성능/안정성에 치명적**일 수 있습니다.
+* 위의 **최소 패치**부터 적용해 보시고, 여력이 되면 **표준 Transformer 블록 + 1D 위치 부여**로 정리하시는 것을 강력히 권장드립니다.
+

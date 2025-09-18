@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "claudepoint": {
+      "command": "node",
+      "args": ["/workspace/MCP/ClaudePoint/bin/claudepoint.js"],
+      "env": {}
+    }
+  }
+}
