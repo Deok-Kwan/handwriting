@@ -1,0 +1,15 @@
+# 데이터 파일들
+*.csv
+*.zip
+*.h5
+*.pkl
+*.png
+
+# 데이터 폴더 전체를 무시
+data/
+raw_data/
+
+# MCP 관련 설정 (필요시 주석 해제)
+# MCP/configs/local/
+# MCP/**/node_modules/
+# MCP/**/.env
